@@ -34,6 +34,7 @@ def test_cred_issue(attributes):
         print("Successful Verification")
     else:
         print("The ublinded credential verification failed")
+        exit(1)
     print("Testing Passed with", len(attributes), "attribute")
 
 

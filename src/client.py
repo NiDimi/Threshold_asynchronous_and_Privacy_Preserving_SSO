@@ -66,8 +66,8 @@ class Client:
         self.__t = t
         C = self.__idp_pk.g1 * t
         j = 0
-        for i in range(len(attributes)):
-            if attributes[i][1]:
+        for i, attribute in enumerate(attributes):
+            if attribute[1]:
                 # Calculate C
                 C += self.__idp_pk.Yg1[i] * hashed_attributes[j]
                 j += 1
@@ -86,16 +86,16 @@ class Client:
         randomness = [o.random()]
         # Calculate V
         V = self.__idp_pk.g1 * randomness[0]
-        for i in range(len(attributes)):
-            if attributes[i][1]:
+        for i, attribute in enumerate(attributes):
+            if attribute[1]:
                 randomness.append(o.random())
                 V += self.__idp_pk.Yg1[i] * randomness[i + 1]
         # Calculate c
         c = helper.to_challenge([C.export(), V.export(), data])
         # Calculate r's
         r = [randomness[0] - self.__t * c]
-        for i in range(len(hashed_attributes)):
-            r.append(randomness[i + 1] - hashed_attributes[i] * c)
+        for i, attribute in enumerate(hashed_attributes):
+            r.append(randomness[i+1] - attribute * c)
         return V, c, r
 
     def unbind_sig(self, sig_prime):
@@ -120,7 +120,7 @@ class Client:
         """
         sig1, sig2 = sig
         verification_result = self.__idp_pk.X
-        for i in range(len(attributes)):
-            attribute_hash = Bn.from_binary(sha256(attributes[i][0]).digest())
+        for i, attribute in enumerate(attributes):
+            attribute_hash = Bn.from_binary(sha256(attribute[0]).digest())
             verification_result += self.__idp_pk.Yg2[i] * attribute_hash
         return BpGroupHelper.e(sig1, verification_result) == BpGroupHelper.e(sig2, self.__idp_pk.g2)

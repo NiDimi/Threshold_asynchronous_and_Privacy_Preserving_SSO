@@ -70,8 +70,8 @@ class IdP:
         # Prepare V
         V = request.C * request.c + self.__pk.g1 * request.r[0]  # The first randomness
         j = 1
-        for i in range(len(request.attributes)):
-            if request.attributes[i] == "":  # Means it is hidden, so we need to verify that the user knows the value
+        for i, attribute in enumerate(request.attributes):
+            if attribute == "":  # Means it is hidden, so we need to verify that the user knows the value
                 V += self.__pk.Yg1[i] * request.r[j]
                 j += 1
         # Do the final check
@@ -90,11 +90,10 @@ class IdP:
         if len(attributes) == 1:  # Means we have only one hidden attribute which obviously is already committed
             return self.__sign_cred(user_commitment)
         # Start committing public attributes
-        for i in range(len(attributes)):
-            if attributes[i] == "": # Means plain
+        for i, attribute in enumerate(attributes):
+            if attribute == "":  # Means hidden
                 continue
-            hashed_attribute = Bn.from_binary(sha256(attributes[i]).digest())
-            user_commitment += self.__pk.Yg1[i] * hashed_attribute
+            user_commitment += self.__pk.Yg1[i] * Bn.from_binary(sha256(attribute).digest())
         return self.__sign_cred(user_commitment)
 
     def __sign_cred(self, commitment):
