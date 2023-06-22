@@ -5,6 +5,7 @@ import helper
 from helper import BpGroupHelper
 from pubKey import PubKey
 from request import Request
+from credproof import CredProof
 
 
 class Client:
@@ -29,10 +30,12 @@ class Client:
         :param data: data used for the NIZK verification (like time stamp etc.)
         :return: A request object to be sent to the IdP
         """
+        # If we provide more attributes than the maximum allowed passed we wont have enough keys
+        assert len(attributes) <= len(self.__idp_pk.Yg1)
         # We need the attributes hashed for processing (only the hidden attributes)
         hashed_attributes = self.__hash_hidden_attributes(attributes)
         C = self.__create_commitment(hashed_attributes, attributes)
-        V, c, r = self.create_zkp(attributes, hashed_attributes, C, data)
+        c, r = self.__create_zkp_idp(attributes, hashed_attributes, C, data)
         # We will send to the IdP the rest of the attributes in plaintext, but we add "" for placeholder of the hidden
         request_attributes = ["" if attr[1] else attr[0] for attr in attributes]
         return Request(C, c, r, request_attributes)
@@ -73,14 +76,19 @@ class Client:
                 j += 1
         return C
 
-    def create_zkp(self, attributes, hashed_attributes, C, data):
+    def __create_zkp_idp(self, attributes, hashed_attributes, C, data):
         """
+        Creates a ZKP for the hidden attributes
         V = g1 ^ random1 * Yg1i ^ random2i
         c = Hash(C || V || data)
         r1 = random1 - t * c
         r2i = random2i - attribute_i * c
 
-        :return:
+        :param attributes: All the attributes (hidden + plain)
+        :param hashed_attributes: The hashed hidden attributes
+        :param C: The commitment of the hidden values
+        :param data: data used for the NIZK verification (like time stamp etc.)
+        :return: the c, r (public values) to be sent to the IdP
         """
         o: Bn = BpGroupHelper.o
         randomness = [o.random()]
@@ -93,10 +101,10 @@ class Client:
         # Calculate c
         c = helper.to_challenge([C.export(), V.export(), data])
         # Calculate r's
-        r = [randomness[0] - self.__t * c]
-        for i, attribute in enumerate(hashed_attributes):
-            r.append(randomness[i+1] - attribute * c)
-        return V, c, r
+        r = [randomness[0] - self.__t * c]  # r1
+        for i, attribute in enumerate(hashed_attributes):  # r2
+            r.append(randomness[i + 1] - attribute * c)
+        return c, r
 
     def unbind_sig(self, sig_prime):
         """
@@ -109,7 +117,7 @@ class Client:
         sig1, sig2 = sig_prime
         return sig1, sig2 - sig1 * self.__t
 
-    def verify(self, sig, attributes):
+    def verify_sig(self, sig, attributes):
         """
         Verify that the blinded signature provided by the IdP is correctly formed
         check if e(sig1, X_prime * Yg2i^hash(attribute_i)) = e(sig2, g2)
@@ -123,4 +131,105 @@ class Client:
         for i, attribute in enumerate(attributes):
             attribute_hash = Bn.from_binary(sha256(attribute[0]).digest())
             verification_result += self.__idp_pk.Yg2[i] * attribute_hash
-        return BpGroupHelper.e(sig1, verification_result) == BpGroupHelper.e(sig2, self.__idp_pk.g2)
+        return not sig1.isinf() and BpGroupHelper.e(sig1, verification_result) == BpGroupHelper.e(sig2,
+                                                                                                  self.__idp_pk.g2)
+
+    def prove_id(self, sig, attributes, data, domain):
+        """
+        Implementation of Section 6.2 of the paper
+        Short Randomizable Signatures the prover side
+        https://doi.org/10.1007/978-3-319-29485-8_7
+
+        :param sig: The ublinded signature the user got from the IdP
+        :param attributes: users attribute that he wants to prove
+        :param data: data used for the NIZK verification (like time stamp etc.)
+        :param domain: the domain of the RP
+        :return: A proof object to be sent to the RP for validation
+        """
+        assert len(attributes) <= len(self.__idp_pk.Yg1)
+        # We need the attributes hashed for processing (only the hidden attributes)
+        hashed_attributes = self.__hash_hidden_attributes(attributes)
+        random_sig = self.__randomize_signature(sig)
+        # Creating user_id
+        # Hash the domain to an element of G1
+        domain_hash = BpGroupHelper.G.hashG1(domain)
+        # The user id is the H(domain)^user_secret
+        # NEED CHANGE THE SECRET S
+        user_id = domain_hash * Bn.from_binary(sha256(attributes[0][0]).digest())
+        pi = self.__create_pi(hashed_attributes, attributes)
+        c, r = self.__create_zkp_rp(attributes, hashed_attributes, user_id, pi, domain_hash, data)
+        # We will send to the RP the rest of the attributes in plaintext, but we add "" for placeholder of the hidden
+        request_attributes = ["" if attr[1] else attr[0] for attr in attributes]
+        return CredProof(random_sig, pi, user_id, c, r, request_attributes)
+
+    def __randomize_signature(self, sig):
+        """
+        Randomize the signature in order to send a different one in all RPs so they cant track the user
+        pick random r,s
+        randomize_sig = sig1^r, (sig2 * sig1^t)^r
+
+        :param sig: The original signature
+        :return: The randomized signature
+        """
+        o: Bn = BpGroupHelper.o
+        t = o.random()
+        self.__t = t
+        r = o.random()
+        sig1, sig2 = sig
+        return sig1 * r, (sig2 + sig1 * t) * r
+
+    def __create_pi(self, hashed_attributes, attributes):
+        """
+        Create the proof pi in order to carry a zkp on. Includes only the hidden attributes
+        as the public ones do not need to be hidden from the RP
+        pi = X * Yg2i^hash(attribute_i) * g2^t
+
+        :param hashed_attributes: The hashed hidden attributes
+        :param attributes: All the attributes (hidden + plain)
+        :return: The proof pi
+        """
+        pi = self.__idp_pk.X
+        j = 0
+        for i, attribute in enumerate(attributes):
+            if attribute[1]:
+                pi += self.__idp_pk.Yg2[i] * hashed_attributes[j]
+                j += 1
+        pi += self.__idp_pk.g2 * self.__t
+        return pi
+
+    def __create_zkp_rp(self, attributes, hashed_attributes, user_id, pi, hashed_domain, data):
+        """
+        Creates a ZKP for the hidden attributes and the identity of the client
+        Vpi = X * Yg2i ^ random2i * g2 ^random1
+        Vid = hash(domain) ^ rs
+        c = Hash(pi || user_id || Vpi || Vid || data)
+        r1 = random2 - t *c
+        r2i = random1i - attributei *c
+
+
+        :param attributes:
+        :param hashed_attributes:
+        :param user_id:
+        :param pi:
+        :param hashed_domain:
+        :param data:
+        :return: the c, r (public values) to be sent to the RP
+        """
+        o: Bn = BpGroupHelper.o
+        # Calculate Vpi
+        Vpi = self.__idp_pk.X
+        randomness = [o.random()]
+        Vpi += self.__idp_pk.g2 * randomness[0]
+        for i, attribute in enumerate(attributes):
+            if attribute[1]:
+                randomness.append(o.random())
+                Vpi += self.__idp_pk.Yg2[i] * randomness[i + 1]
+        randomness.append(o.random())
+        # Calculate Vid
+        Vid = hashed_domain * randomness[1]
+        # Calculate c
+        c = helper.to_challenge([pi.export(), user_id.export(), Vpi.export(), Vid.export(), data])
+        r = [randomness[0] - self.__t * c]  # r1
+        for i, attribute in enumerate(hashed_attributes):  # r2
+            r.append(randomness[i+1] - attribute * c)
+        return c, r

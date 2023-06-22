@@ -5,8 +5,8 @@ class Request:
 
         :param C: The commitment of the values the user wants to keep private
         :param c: The challenge created in a NIZKP
-        :param rs: The repsonse of when creating a NIZKP
-        :param attributes: The attributes that the user sends.
+        :param r: The responses of when creating a NIZKP
+        :param attributes: The public attributes that the user sends.
         IMPORTANT empty strings represent private attributes
         """
         self.C = C
