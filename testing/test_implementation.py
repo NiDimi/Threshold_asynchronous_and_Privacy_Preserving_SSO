@@ -11,11 +11,11 @@ from idp import IdP
 from rp import RP
 
 attributes: List[Tuple[bytes, bool]] = [
-    (b"secre1", True),
-    (b"secre2", True),
-    (b"plain1", False)]
+    (b"hidden1", True),
+    (b"hidden2", True),
+    (b"public1", False)]
 attribute: List[Tuple[bytes, bool]] = [
-    (b"secre1", True)]
+    (b"hidden1", True)]
 BpGroupHelper.setup()
 
 
@@ -44,9 +44,9 @@ def test_idp_client(config):
 @pytest.mark.parametrize("config", [attributes, attribute])
 def test_complete_implementation(config):
     bad_attributes: List[Tuple[bytes, bool]] = [
-        (b"secre12", True),
-        (b"secre2", True),
-        (b"plain1", False)]
+        (b"hidden12222", True),
+        (b"hidden2", True),
+        (b"public1", False)]
     # ------------------ Idp - Client  ------------------
     # First create the object for IdP
     idp = IdP(len(attributes))
