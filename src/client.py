@@ -27,7 +27,7 @@ class Client:
 
         :param attributes: users attribute.
         The format of the attributes is ["attribute", "True if hidden false otherwise]
-        :param data: data used for the NIZK verification (like time stamp etc.)
+        :param data: data used for the NIZK verification (like is the user above an age)
         :return: A request object to be sent to the IdP
         """
         # If we provide more attributes than the maximum allowed passed we wont have enough keys
@@ -87,7 +87,7 @@ class Client:
         :param attributes: All the attributes (hidden + plain)
         :param hashed_attributes: The hashed hidden attributes
         :param C: The commitment of the hidden values
-        :param data: data used for the NIZK verification (like time stamp etc.)
+        :param data: data used for the NIZK verification (like is the user above an age)
         :return: the c, r (public values) to be sent to the IdP
         """
         o: Bn = BpGroupHelper.o
@@ -126,6 +126,7 @@ class Client:
         :param attributes: the attributes that the signature was signed over
         :return: true if it is correct false otherwise
         """
+        assert len(attributes) <= len(self.__idp_pk.Yg1)
         sig1, sig2 = sig
         verification_result = self.__idp_pk.X
         for i, attribute in enumerate(attributes):
@@ -142,7 +143,7 @@ class Client:
 
         :param sig: The ublinded signature the user got from the IdP
         :param attributes: users attribute that he wants to prove
-        :param data: data used for the NIZK verification (like time stamp etc.)
+        :param data: data used for the NIZK verification (like is the user above an age)
         :param domain: the domain of the RP
         :return: A proof object to be sent to the RP for validation
         """

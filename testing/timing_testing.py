@@ -23,40 +23,40 @@ start_time = time.time()
 pk = idp.keygen()
 end_time = time.time()
 elapsed_time_ms = (end_time - start_time) * time_unit
-print(f"IdP - Keygen(): {elapsed_time_ms:.2f} ms")
+print(f"IdP - Keygen(): {elapsed_time_ms:.{digits}f} ms")
 
 client = Client(pk)
 start_time = time.time()
 request = client.request_id(attributes, b"Data")
 end_time = time.time()
 elapsed_time_ms = (end_time - start_time) * time_unit
-print(f"Client - request_id(): {elapsed_time_ms:.2f} ms")
+print(f"Client - request_id(): {elapsed_time_ms:.{digits}f} ms")
 
 start_time = time.time()
 sig_prime = idp.provide_id(request, b"Data")
 end_time = time.time()
 elapsed_time_ms = (end_time - start_time) * time_unit
-print(f"IdP - provide_id(): {elapsed_time_ms:.2f} ms")
+print(f"IdP - provide_id(): {elapsed_time_ms:.{digits}f} ms")
 
 assert sig_prime != 0
 start_time = time.time()
 sig = client.unbind_sig(sig_prime)
 end_time = time.time()
 elapsed_time_ms = (end_time - start_time) * time_unit
-print(f"Client - unblind_sig(): {elapsed_time_ms:.2f} ms")
+print(f"Client - unblind_sig(): {elapsed_time_ms:.{digits}f} ms")
 
 start_time = time.time()
 assert client.verify_sig(sig, attributes)
 end_time = time.time()
 elapsed_time_ms = (end_time - start_time) * time_unit
-print(f"Client - verify_sig(): {elapsed_time_ms:.2f} ms")
+print(f"Client - verify_sig(): {elapsed_time_ms:.{digits}f} ms")
 
 # ------------------ RP - Client  ------------------
 start_time = time.time()
 proof = client.prove_id(sig, attributes, b"Data", b"Domain")
 end_time = time.time()
 elapsed_time_ms = (end_time - start_time) * time_unit
-print(f"Client - prove_id(): {elapsed_time_ms:.2f} ms")
+print(f"Client - prove_id(): {elapsed_time_ms:.{digits}f} ms")
 
 rp = RP(pk)
 start_time = time.time()
