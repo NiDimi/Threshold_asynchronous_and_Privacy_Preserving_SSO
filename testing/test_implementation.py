@@ -45,8 +45,8 @@ def test_idp_client_normal():
     sig = client.agg_cred(sigs)
 
     assert client.verify_sig(sig, aggr_vk, public_m, private_m)
-    # proof = client.prove_id(sig, attributes, aggr_vk)
-    # assert RP().verify_id(proof, aggr_vk)
+    proof = client.prove_id(sig, private_m, aggr_vk)
+    assert RP().verify_id(proof, aggr_vk, public_m)
 
 # @pytest.mark.parametrize("config", [attribute, attributes])
 # def test_idp_client_bad(config):

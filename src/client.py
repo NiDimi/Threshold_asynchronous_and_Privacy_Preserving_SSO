@@ -110,22 +110,24 @@ class Client:
         return not h.isinf() and e(h, verification_result) == e(s, g2)
 
 
-    def prove_id(self, sig, attributes, aggr_vk):
+    def prove_id(self, sig, private_m, aggr_vk):
         o = BpGroupHelper.o
         g2, alpha, beta = aggr_vk
         r = o.random()
         h_prime, s_prime = self.__randomize_signature(sig)
         sig_prime = h_prime, s_prime
         k = r * g2 + alpha
-
-        for i, attribute in enumerate(attributes):
-            if attribute[1]:
-                k += Bn.from_binary(sha256(attribute[0]).digest()) * beta[i]
+        for i, m in enumerate(private_m):
+            k += m * beta[i]
+        # for i, attribute in enumerate(attributes):
+        #     if attribute[1]:
+        #         k += Bn.from_binary(sha256(attribute[0]).digest()) * beta[i]
         nu = r * h_prime
         # zkp
-        pi_v = self.__create_zkp_rp(attributes, aggr_vk, sig_prime, r)
-        public_attributes = ["" if attr[1] else attr[0] for attr in attributes]
-        return CredProof(k, nu, sig_prime, pi_v, public_attributes)
+        # pi_v = self.__create_zkp_rp(attributes, aggr_vk, sig_prime, r)
+        pi_v = 0
+        # public_attributes = ["" if attr[1] else attr[0] for attr in attributes]
+        return CredProof(k, nu, sig_prime, pi_v, [])
 
     def __randomize_signature(self, sig):
         o = BpGroupHelper.o
