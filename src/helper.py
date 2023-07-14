@@ -18,6 +18,7 @@ class BpGroupHelper:
         :param q: The maximum number of the attributes
         """
         assert q > 0
+        q = 3
         BpGroupHelper.G = BpGroup()
         BpGroupHelper.g1, BpGroupHelper.g2 = BpGroupHelper.G.gen1(), BpGroupHelper.G.gen2()
         BpGroupHelper.e, BpGroupHelper.o = BpGroupHelper.G.pair, BpGroupHelper.G.order()
@@ -117,8 +118,9 @@ def ttp_keygen(t, n):
     # We need to make sure that the threshold is smaller that the number of authorities
     assert n >= t > 0
     # Generate the polynomials (these are the coefficients, which are just random numbers)
-    v = [o.random() for _ in range(0,t)]  # Basically we generate how many number we need. The degree will be t-1 so t num
-    w = [[o.random() for _ in range(0,t)] for _ in range(len(BpGroupHelper.hs))]  # For every v we need q w's so t * q
+    v = [o.random() for _ in
+         range(0, t)]  # Basically we generate how many number we need. The degree will be t-1 so t num
+    w = [[o.random() for _ in range(0, t)] for _ in range(len(BpGroupHelper.hs))]  # For every v we need q w's so t * q
 
     # Generates the secret shares using shamir secret sharing
     x = [Polynomial.evaluate(v, i) % o for i in range(1, n + 1)]
@@ -146,6 +148,6 @@ def agg_key(vks):
         total = G2Elem.inf(G)
         for j in range(len(filter)):
             total += l[j] * beta[j][i]
-            aggr_alpha += l[j] * alpha[j]
+            if i == 0: aggr_alpha += l[j] * alpha[j]
         aggr_beta.append(total)
     return g2, aggr_alpha, aggr_beta

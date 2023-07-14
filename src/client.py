@@ -41,12 +41,12 @@ class Client:
             enc.append(self.elgamal.encrypt(m, h))
 
         (a, b, k) = zip(*enc)
-        cypher = list(zip(a, b))
+        c = list(zip(a, b))
         # ZKP
         # pi_s = self.__create_zkp_idp(self.elgamal.gamma, cypher, C, k, r, attributes)
         pi_s = 0
         # public_attributes = ["" if attr[1] else attr[0] for attr in attributes]
-        return Request(self.elgamal.gamma, C, cypher, pi_s, [])
+        return Request(self.elgamal.gamma, C, c, pi_s, [])
 
     def __create_commitment(self, attributes):
         G, o, g1, hs = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs
