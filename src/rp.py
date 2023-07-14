@@ -1,5 +1,6 @@
 from hashlib import sha256
 
+from bplib.bp import G2Elem
 from petlib.bn import Bn
 
 from pubKey import PubKey
@@ -9,64 +10,30 @@ from helper import BpGroupHelper
 
 
 class RP:
-    def __init__(self, idp_pk):
-        self.__idp_pk: PubKey = idp_pk
 
-    def verify_id(self, proof: CredProof, domain):
-        """
-        Implementation of Section 6.2 of the paper
-        Short Randomizable Signatures the verifier side
-        https://doi.org/10.1007/978-3-319-29485-8_7
+    def verify_id(self, proof: CredProof, aggr_vk):
+        G, g2, e = BpGroupHelper.G, BpGroupHelper.g2, BpGroupHelper.e
+        (g2, _, beta) = aggr_vk
 
-        :param proof: The proof the user generated to prove his credentials
-        :param domain: The domain of the RP
-        :return: True if the signature is verified false otherwise
-        """
-        if not self.__verify_zkp(proof, domain):
+        if not self.__verify_zkp(proof, aggr_vk):
             return False
+        aggr = G2Elem.inf(G)
+        for i, attribute in enumerate(proof.attributes):
+            if attribute != "":
+                aggr += Bn.from_binary(sha256(attribute).digest()) * beta[i]
+        h, s = proof.sig
+        return not h.isinf() and e(h, proof.k + aggr) == e(s + proof.nu, g2)
 
-        final_pi = self.__create_final_pi(proof.pi, proof.attributes)
-        sig1, sig2 = proof.sig
-        return not sig1.isinf() and BpGroupHelper.e(sig1, final_pi) == BpGroupHelper.e(sig2,
-                                                                                       self.__idp_pk.g2)
-
-    def __verify_zkp(self, proof: CredProof, domain):
-        """
-        Verify that the clients NIZKP request is correct
-        Vpi = pi ^ c * g2 ^ rt * Yg2[0] ^ rs * Yg2[i+1] ^ ri
-        vid = user_id ^ c * H(domain) ^ rs
-        True if hash(pi || id || Vpi || Vid) = c
-
-        :param proof: The proof the user generated to prove his credentials
-        :param domain: The domain of the RP
-        :return: true if the zkp can be verified false otherwise
-        """
-        # Prepare Vpi
-        Vpi = proof.pi * proof.c + self.__idp_pk.g2 * proof.r[0] + self.__idp_pk.Yg2[0] * proof.r[1]
-        j = 2
+    def __verify_zkp(self, proof: CredProof, aggr_vk):
+        g1, hs, _ = BpGroupHelper.g1, BpGroupHelper.hs, BpGroupHelper.g2
+        (g2, alpha, beta) = aggr_vk
+        (h, _) = proof.sig
+        (c, rm, rt) = proof.zkp
+        Aw = c * proof.k + rt * g2 + (1 - c) * alpha
+        j = 0
         for i, attribute in enumerate(proof.attributes):
             if attribute == "":
-                Vpi += self.__idp_pk.Yg2[i+1] * proof.r[j]
+                Aw += rm[j] * beta[i]
                 j += 1
-        # Prepare Vid
-        domain_hash = BpGroupHelper.G.hashG1(domain)
-        Vid = proof.user_id * proof.c + domain_hash * proof.r[1]
-        # Do the final check
-        return proof.c == helper.to_challenge(
-            [proof.pi.export(), proof.user_id.export(), Vpi.export(), Vid.export()])
-
-    def __create_final_pi(self, pi, attributes):
-        """
-        Add to the proof pi the public values (including the public key X). The client has only added the private values
-        pi += X * Yg2[i+1] ^ hash(attributei)
-
-        :param pi: The proof pi with only the private attributes
-        :param attributes: All the attributes. Empty strings are placeholders for private attributes
-        :return: The pi with all the attributes
-        """
-        final_pi = pi + self.__idp_pk.X
-        for i, attribute in enumerate(attributes):
-            if attribute == "":
-                continue
-            final_pi += self.__idp_pk.Yg2[i+1] * Bn.from_binary(sha256(attribute).digest())
-        return final_pi
+        Bw = c * proof.nu + rt * h
+        return c == helper.to_challenge([g1, g2, alpha, Aw, Bw] + hs + beta)
