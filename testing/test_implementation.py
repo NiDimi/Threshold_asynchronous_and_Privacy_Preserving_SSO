@@ -29,24 +29,29 @@ def test_idp_client_normal():
     # assert sig_prime != 0
     # sig = client.unbind_sig(sig_prime)
     # assert client.verify_sig(sig, config)
-    # attributes: List[Tuple[bytes, bool]] = [
-    #     (b"hidden1", True),
-    #     (b"hidden2", True)]
+    attributes: List[Tuple[bytes, bool]] = [
+        (b"hidden1", True),
+        (b"hidden2", True),
+        (b"public1", False)]
+    attributes = helper.sort_attributes(attributes)
     private_m = [10] * 2
     public_m = [3] * 1
     t, n = 2, 3
-    BpGroupHelper.setup(3)
-    client = Client()
-    request = client.request_id(private_m, public_m)
+    BpGroupHelper.setup(7)
     (sk, vk) = helper.ttp_keygen(t, n)
+    # vk[6] = vk[0] = vk[1] = None
+    # vk[2] = None
     aggr_vk = helper.agg_key(vk)
-    sigs_prime = [IdP().provide_id(ski, request, public_m) for ski in sk]
+    client = Client(attributes, aggr_vk)
+    request = client.request_id()
+    sigs_prime = [IdP().provide_id(ski, request) for ski in sk]
     sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
-    sig = client.agg_cred(sigs)
+    # sigs[0] = sigs[5] = None
+    client.agg_cred(sigs)
 
-    assert client.verify_sig(sig, aggr_vk, public_m, private_m)
-    proof = client.prove_id(sig, private_m, aggr_vk)
-    assert RP().verify_id(proof, aggr_vk, public_m)
+    assert client.verify_sig()
+    proof = client.prove_id()
+    assert RP().verify_id(proof, aggr_vk)
 
 # @pytest.mark.parametrize("config", [attribute, attributes])
 # def test_idp_client_bad(config):

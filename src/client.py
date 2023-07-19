@@ -5,86 +5,118 @@ from petlib.bn import Bn
 
 import helper
 from helper import BpGroupHelper, ElGamal, Polynomial
-from pubKey import PubKey
 from request import Request
-from typing import List, Tuple
 from credproof import CredProof
 
 
 class Client:
-    def __init__(self):
-        """
-        Constructor for the client
+    def __init__(self, attributes, vk):
+        assert len(attributes) <= len(BpGroupHelper.hs)
+        self.__elgamal = ElGamal()
+        self.__attributes = attributes
+        #  The hashed attributes in the style (hash, True/False) indicating private or not
+        self.__hashed_attributes = helper.hash_attributes(attributes)
+        self.__aggr_vk = vk
+        self.__sig = None
 
-        :param idp_pk: The public key of the IdP
-        :param secret: This secret will be used to build an identity to the RP such as IdP cant use the attributes and
-        the client cant create multiple users in the RP
-        """
-        self.elgamal = ElGamal()
-        # self.__idp_pk: PubKey = idp_pk
-        # # Used for blinding and unblinding the signatures
-        # self.__t = None
-        # self.__secret = Bn.from_binary(sha256(secret).digest())
-
-    def request_id(self, private_m, public_m):
+    def request_id(self):
         G, o, g1, hs = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs
-        attributes = private_m + public_m
-        assert len(attributes) <= len(hs)
-        C, r = self.__create_commitment(attributes)
+        C, r = self.__create_commitment()
         h = G.hashG1(C.export())
         # El-gamal encryption
-        enc = []
-        # for i, attribute in enumerate(attributes):
-        #     if attribute[1]:
-        #         enc.append(self.elgamal.encrypt(Bn.from_binary(sha256(attribute[0]).digest()), h))
-        for m in private_m:
-            enc.append(self.elgamal.encrypt(m, h))
-
+        enc = self.__encrypt_elgamal(h)
         (a, b, k) = zip(*enc)
-        c = list(zip(a, b))
+        cypher = list(zip(a, b))
         # ZKP
-        # pi_s = self.__create_zkp_idp(self.elgamal.gamma, cypher, C, k, r, attributes)
-        pi_s = 0
-        # public_attributes = ["" if attr[1] else attr[0] for attr in attributes]
-        return Request(self.elgamal.gamma, C, c, pi_s, [])
+        pi_s = self.__create_zkp_idp(self.__elgamal.pk, C, k, r, h)
+        public_attributes = ["" if attr[1] else attr[0] for attr in self.__attributes]
+        return Request(self.__elgamal.pk, C, cypher, pi_s, public_attributes)
 
-    def __create_commitment(self, attributes):
-        G, o, g1, hs = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs
+    def __encrypt_elgamal(self, h):
+        """
+        Encrypt the attributes using el-gamal in order to take advantage of its homomorphic properties
+        enc_i = g1^k_i, pk^k_i * h ^ attribute_i
+
+        :param h: Hash(C) where C is the commitment of the attributes
+        :return: enc list in the style (a_i, b_i, randomness used k_i)
+        """
+        enc = []
+        for i, attribute in enumerate(self.__hashed_attributes):
+            if attribute[1]:
+                enc.append(self.__elgamal.encrypt(attribute[0] * h))
+        return enc
+
+    def __create_commitment(self):
+        """
+        Create the commitment of the attributes in order to generate a similar base for the IdP
+        C = g1^r * h_i^attribute_i
+
+        :return: The commitment and the randomness use to create it
+        """
+        o, g1, hs = BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs
         r = o.random()
         C = r * g1
-        for i, attribute in enumerate(attributes):
-            C += attribute * hs[i]
+        for i, attribute in enumerate(self.__hashed_attributes):
+            C += attribute[0] * hs[i]
         return C, r
 
-    def __create_zkp_idp(self, pk, cypher, C, k, r, attributes):
-        G, o, g1, hs, g2 = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs, BpGroupHelper.g2
-        # Compute witnesses
-        wr = o.random()
-        wk = [o.random() for _ in k]
-        wm = [o.random() for _ in attributes]
-        # Compute h
-        h = G.hashG1(C.export())
-        # Compute the commitments
-        Aw = [g1 * wki for wki in wk]  # for k's
-        Bw = []
-        Cw = wr * g1
-        for i, attribute in enumerate(attributes):
-            if attribute[1]:
-                Bw.append(wk[i] * pk + wm[i] * h)
-            Cw += wm[i] * hs[i]
+    def __create_zkp_idp(self, pk, C, k, r, h):
+        """
+        Create the ZKP for the randomness r used for the commitment, for the whole commitment, and for elgamal enc
+        Va: For the elgamal encryptiono first part = g1^random_k_i
+        Vb: For the elgamal encryption second part = pk^random_k_i * h^random_pa_i
+        Vc: For the commitment = g1^random_t * h_i ^random_a_i
+        random_a_i and random_pa_i is the same but in the el gamal only the private attrubutes were used thats the diff
+        c = Hash(g1 || g2 || C || h || Vc || hs || Va || Vb)
+        rr = random_t - c * r
+        rk = random_k_i - c * k_i
+        ra = random_a_i - c * attribute_i
 
-        c = helper.to_challenge([g1, g2, C, h, Cw] + hs + Aw + Bw)
-        rr = (wr - c * r) % o
-        rk = [(wk[i] - c * k[i]) % o for i in range(len(wk))]
-        rm = [(wm[i] - c * Bn.from_binary(sha256(attributes[i][0]).digest())) % o for i in range(len(wm))]
-        return c, rk, rm, rr
+        :param pk: The public key used for el gamal encryption
+        :param C: The commitment of the attributes
+        :param k: The randomness used for the el gamal encryption
+        :param r: The randomness used for the commitment
+        :param h: The HashG1(C) that was used for the el gamal encryption
+        :return: the responses rr,rk,ra and the challenge c see above
+        """
+        o, g1, hs, g2 = BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs, BpGroupHelper.g2
+        # Compute witnesses
+        wr = o.random()  # Randomness for the r in the commitment
+        wk = [o.random() for _ in k]  # Randomness for the randomness k in el gamal
+        wa = [o.random() for _ in self.__attributes]  # Randomness for the attributes
+        # Compute the commitments
+        Va = [g1 * wki for wki in wk]  # For the elgamal encryption the alpha
+        Vb = []  # For the elgamal encryption the beta
+        Vc = wr * g1  # For the commitment of the attributes (C)
+        for i, attribute in enumerate(self.__attributes):
+            if attribute[1]:
+                Vb.append(wk[i] * pk + wa[i] * h)
+            Vc += wa[i] * hs[i]
+        # Compute the challenge
+        c = helper.to_challenge([g1, g2, C, h, Vc] + hs + Va + Vb)
+        # Compute the responses
+        rr = (wr - c * r) % o  # response for the r randomness
+        rk = [(wk[i] - c * k[i]) % o for i in range(len(wk))]  # response for the k's randomness
+        ra = [(wa[i] - c * self.__hashed_attributes[i][0]) % o for i in range(len(wa))]  # response for the attributes
+        return c, rk, ra, rr
 
     def unbind_sig(self, sig_prime):
+        """
+        Unblind the blinded sig which is basically is decrypting with el gamal
+
+        :param sig_prime: The encrypted signature
+        :return: The unblinded signature
+        """
         h, c_prime = sig_prime
-        sig = h, self.elgamal.decrypt(c_prime)
+        sig = h, self.__elgamal.decrypt(c_prime)
         return sig
 
     def agg_cred(self, sigs):
+        """
+        Aggregate all the credentials generated from the different IdP and store it in sig
+
+        :param sigs: A list of the signatures
+        """
         G = BpGroupHelper.G
         filter = []
         indexes = []
@@ -97,62 +129,95 @@ class Client:
         aggr_sig = G1Elem.inf(G)
         for i in range(len(filter)):
             aggr_sig += l[i] * s[i]
-        return h[0], aggr_sig
+        self.__sig = h[0], aggr_sig
 
-    def verify_sig(self, sig, aggr_vk, public_m, private_m):
+    def verify_sig(self):
+        """
+        Verify the generation of the signature from the IdP and the aggregation
+
+        :return: True if it is correct false otherwise
+        """
         e = BpGroupHelper.e
-        g2, alpha, beta = aggr_vk
-        h, s = sig
-        attributes = private_m + public_m
+        g2, alpha, beta = self.__aggr_vk
+        h, s = self.__sig
         verification_result = alpha
-        for i, attribute in enumerate(attributes):
-            verification_result += beta[i] * attribute
+        for i, attribute in enumerate(self.__hashed_attributes):
+            verification_result += beta[i] * attribute[0]
         return not h.isinf() and e(h, verification_result) == e(s, g2)
 
-
-    def prove_id(self, sig, private_m, aggr_vk):
-        o = BpGroupHelper.o
-        g2, alpha, beta = aggr_vk
-        r = o.random()
-        h_prime, s_prime = self.__randomize_signature(sig)
+    def prove_id(self):
+        # Randomise the sig
+        h_prime, s_prime = self.__randomize_signature()
         sig_prime = h_prime, s_prime
-        k = r * g2 + alpha
-        for i, m in enumerate(private_m):
-            k += m * beta[i]
-        # for i, attribute in enumerate(attributes):
-        #     if attribute[1]:
-        #         k += Bn.from_binary(sha256(attribute[0]).digest()) * beta[i]
-        nu = r * h_prime
-        # zkp
-        # pi_v = self.__create_zkp_rp(attributes, aggr_vk, sig_prime, r)
-        pi_v = 0
-        # public_attributes = ["" if attr[1] else attr[0] for attr in attributes]
-        return CredProof(k, nu, sig_prime, pi_v, [])
+        # Create the K
+        k, r = self.__create_k()
+        # Create the vu
+        vu = r * h_prime
+        # ZKP
+        pi_v = self.__create_zkp_rp(sig_prime, r)
+        public_attributes = ["" if attr[1] else attr[0] for attr in self.__attributes]
+        return CredProof(k, vu, sig_prime, pi_v, public_attributes)
 
-    def __randomize_signature(self, sig):
+    def __randomize_signature(self):
+        """
+        Randomizes the signature to provide unlinkability
+        sig_prime  = h^r, s^r
+
+        :return: A randomized signature of the client
+        """
         o = BpGroupHelper.o
         r = o.random()
-        h, s = sig
+        h, s = self.__sig
         return h * r, s * r
 
-    def __create_zkp_rp(self, attributes, aggr_vk, sig, t):
-        G, o, g1, hs, _ = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs, BpGroupHelper.g2
-        (g2, alpha, beta) = aggr_vk
+    def __create_k(self):
+        """
+        Create k in order to hide the private attributes and to prove correct form of the vk
+        k = a * g2^r * b_i^priv_attribute_i
+
+        :return: The k created and the randomness it was to create it
+        """
+        o = BpGroupHelper.o
+        g2, alpha, beta = self.__aggr_vk
+        r = o.random()
+        k = alpha + g2 * r
+        for i, attribute in enumerate(self.__hashed_attributes):
+            if attribute[1]:
+                k += attribute[0] * beta[i]
+        return k, r
+
+    def __create_zkp_rp(self, sig, r):
+        """
+        Create the ZKP for the randomness r used to create k, for knowledge of the private attribtues
+        and correct construction of the vk
+        Vr = h^random_r
+        Va = alpha * beta_i^random_a_i * g2 ^ random_r
+        c = (g1 || g2 || alpha || Va || Vr || hs || beta)
+        rr = randdom_r - c * r
+        ra = random_a_i - c * attribute_i
+
+        :param sig: The randomized signature that will be sent to the RP
+        :param r: The randdomness used to create k
+        :return: The responses rr, ra and the challenge c see above
+        """
+        G, o, g1, hs = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs
+        (g2, alpha, beta) = self.__aggr_vk
         (h, _) = sig
-        wt = o.random()
-        Bw = wt * h
-        wm = []
-        Aw = wt * g2 + alpha
-        for i, attribute in enumerate(attributes):
+        # Create witnesses and commitments
+        wr = o.random()  # Witness for the r
+        Vr = wr * h  # The commitment for the r
+        wa = []  # Witness for the attributes
+        Va = wr * g2 + alpha  # Witness for the attributes and key
+        for i, attribute in enumerate(self.__attributes):
             if attribute[1]:
-                wm.append(o.random())
-                Aw += wm[i] * beta[i]
-        c = helper.to_challenge([g1, g2, alpha, Aw, Bw] + hs + beta)
-        j = 0
-        rm = []
-        for i, attribute in enumerate(attributes):
-            if attribute[1]:
-                rm.append((wm[j] - c * Bn.from_binary(sha256(attribute[0]).digest())) % o)
-                j += 1
-        rt = (wt - c * t) % o
-        return c, rm, rt
+                wa.append(o.random())
+                Va += wa[i] * beta[i]
+        # Compute the challenge
+        c = helper.to_challenge([g1, g2, alpha, Va, Vr] + hs + beta)
+        # Compute the responses
+        ra = [(wmi - c * attribute[0]) % o for wmi, attribute in zip(wa, self.__hashed_attributes) if wmi is not None]
+        # for i, attribute in enumerate(self.hashed_attributes):
+        #     if attribute[1]:
+        #         ra.append((wa[i] - c * attribute[0]) % o)
+        rr = (wr - c * r) % o
+        return c, ra, rr
