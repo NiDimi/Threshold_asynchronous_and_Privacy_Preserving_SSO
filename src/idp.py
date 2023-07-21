@@ -1,24 +1,152 @@
 from hashlib import sha256
+from collections import defaultdict
 
 from bplib.bp import G1Elem
 from petlib.bn import Bn
 
 import helper
-from pubKey import PubKey
-from helper import BpGroupHelper
+from helper import BpGroupHelper, Polynomial
 from request import Request
 
 
 class IdP:
-    # def __init__(self, id, sk, vk):
-    #     self.__id = id
-    #     self.__sk = sk
-    #     self.__vk = vk
+    def __init__(self, id=1, t=1, n=2):
+        commitment_coeffs, s_shares, b_shares = self.generate_pedersen_vars(t, n)
+        self.id = id
+        self.commitment_coeffs = commitment_coeffs
+        self.s_shares = s_shares
+        self.b_shares = b_shares
+        self.all_commitment_coeffs = defaultdict(dict)
+        self.all_shares = defaultdict(tuple)
+        self.secret_share = None
+        self.sk = [None, []]
+        self.vk = ()
 
-    def provide_id(self, sk, request):
+    """--------------------------CODE FOR THE GENERATION OF THE KEYS------------------------"""
+
+    def generate_pedersen_vars(self, t, n):
+        """
+        Generates two polynomials, the shares
+        and creates the commitment g^s_i * h^t_i for i=0,...,threshold
+
+        :param t: The minimum number of authorities we need (threshold)
+        :param n: The total number of authorities we have
+        :return: The committed coeffs, the shares of the secret, the shares of the blinding
+        """
+        g, h = BpGroupHelper.g_secret, BpGroupHelper.h_secret
+        s_shares, s_coeff = self.generate_polynomial(t, n)  # Used for the secret
+        b_shares, b_coeff = self.generate_polynomial(t, n)  # Blinding factor
+        # create a dict with g^s_i * h^t_i. The broadcasted commitment
+        commitment_coeffs = [g * s_coeff[i] + h * b_coeff[i] for i in range(t)]
+        # Return the secret, the commitment coeffs, the shares of s and t
+        return commitment_coeffs, s_shares, b_shares
+
+    def generate_polynomial(self, t, n):
+        """
+        Generate a random polynomial.
+        Also compute the shares s_j = f(j) for j=1,...,n
+
+        :param t: The minimum number of authorities we need (threshold)
+        :param n: The total number of authorities we have
+        :return: The shares, and the coefficients
+        """
+        o = BpGroupHelper.o
+        coeff = [o.random() for _ in range(t)]
+        # Store the shares in the format {x(the value that it was evaluated at) : result)
+        shares = {x: Polynomial.evaluate(coeff, x) for x in range(1, n + 1)}
+        return shares, coeff
+
+    def receive_share(self, sender_id, commitment_coeffs, share):
+        """
+        Just store the shares and the committed coeffs of the other IdP's.
+        Each IdP needs to broadcast the commitment and the sharess
+
+        :param sender_id: The id of the IdP that send the vars
+        :param commitment_coeffs: The committed coeffs
+        :param share: The shares in the style (s, b) - secret, blinding factor
+        """
+        self.all_commitment_coeffs[sender_id] = commitment_coeffs
+        self.all_shares[sender_id] = share
+
+    def verify_share(self, t, share, commitment_coeffs):
+        """
+        Each IdP needs to verify the share. If the check failed normally we would broadcast a complaint
+        g^s * h^t = committed_coeffs_k^(id^k) for k=0,...,t
+
+        :param t: The threshold
+        :param share: The shares in the style (s, b) - secret, blinding factor
+        :param commitment_coeffs: The committed coeffs
+        :return: True if the verification works, false otherwise
+        """
+        assert len(commitment_coeffs) >= t
+        g, h = BpGroupHelper.g_secret, BpGroupHelper.h_secret
+        result_list = [commitment_coeffs[k] * (self.id ** k) for k in range(t)]
+        result = G1Elem.inf(BpGroupHelper.G)
+        for result_i in result_list:
+            result += result_i
+        return result == g * share[0] + h * share[1]
+
+    def compute_final_secret(self, t, n):
+        """
+        For all participants final_s = Sum(all_shares_s), final_b = Sum(all_shares_b).
+        We also add all the commitmetns in order to verify that the final secret is correct
+
+        :param t: The minimum number of authorities we need (threshold)
+        :param n: The total number of authorities we have
+        """
+        assert len(self.all_commitment_coeffs) == n - 1
+        assert len(self.all_shares) == n - 1
+        final_comm_coeffs = defaultdict(dict)
+        for i in range(t):
+            cm = G1Elem.inf(BpGroupHelper.G)
+            for j in range(1, n + 1):
+                # The final coefficient is only used for verification
+                if j != self.id:
+                    # Means different IdP take all the commitments
+                    cm += self.all_commitment_coeffs[j][i]
+                else:
+                    # Means the same IdP take its commitment
+                    cm += self.commitment_coeffs[i]
+            final_comm_coeffs[i] = cm
+
+        final_s_share = 0
+        final_b_share = 0
+        for i in range(1, n + 1):
+            s, b = self.all_shares[i] if i != self.id else (self.s_shares[i], self.b_shares[i])
+            # Summing the s and t
+            final_s_share += s
+            final_b_share += b
+        # Verify that the final secret created is true
+        assert self.verify_share(t, (final_s_share, final_b_share), final_comm_coeffs)
+        self.secret_share = final_s_share
+
+    """The keys of the idp will have the format sk = (x, y_1,...,y_q) and 
+    vk = (g2, g2^x, g2^y_0,...,g2^y_q) so we need to generate q+1 shares and save it each time"""
+    def save_sk_x(self):
+        """
+        Just save the x generated
+        """
+        self.sk[0] = self.secret_share
+
+    def add_sk_y(self):
+        """
+        Add the y of the sk in the list
+        """
+        self.sk[1].append(self.secret_share)
+
+    def generate_vk(self):
+        """
+        After collecting the hole sk we can now create the vk
+        """
+        g2 = BpGroupHelper.g2
+        self.vk = (g2, self.sk[0] * g2, [g2 * y_i for y_i in self.sk[1]])
+
+    """--------------------------CODE FOR THE PROTOCOL------------------------"""
+
+    def provide_id(self, request):
         if not self.__verify_zkp(request):
             return 0
-        return self.__sign_cred(request, sk)
+        return self.__sign_cred(request)
 
     def __verify_zkp(self, request: Request):
         """
@@ -43,7 +171,7 @@ class IdP:
             Vc += ra[i] * hs[i]
         return c == helper.to_challenge([g1, g2, request.C, h, Vc] + hs + Va + Vb)
 
-    def __sign_cred(self, request: Request, sk):
+    def __sign_cred(self, request: Request):
         """
         Basic PS signatures
         First we need to commit the public attributes since the user only commited the private C_pub = h^attributeP_i
@@ -55,7 +183,8 @@ class IdP:
         """
         G = BpGroupHelper.G
         h = G.hashG1(request.C.export())  # generate the common base with the user to add the public attributes
-        (x, y) = sk
+        # (x, y) = sk
+        x, y = self.sk[0], self.sk[1]
         (a, b) = zip(*request.cypher)
         C_pub = []  # Commit the public values
         for i, attribute in enumerate(request.attributes):
@@ -69,3 +198,67 @@ class IdP:
             c_2 += yi * bi
 
         return h, (c_1, c_2)
+
+
+def simulate_secret_sharing(idps, t, n):
+    """
+    This function simulates the broadcast protocol of the secrets of the IdPs in order to generate the keys
+
+    :param idps: The list of idps we have
+    :param t: The minimum number of authorities we need (threshold)
+    :param n: The total number of authorities we have
+    :return: The idps with their share of the secret created
+    """
+    # Sharing its IdPs share with each other
+    for i in range(n):
+        for j in range(n):
+            if i == j:  # Means we are in the same id participant so we just move on
+                continue
+            id, commitment_coeffs, s, b = idps[j].id, idps[j].commitment_coeffs, \
+                idps[j].s_shares[i + 1], idps[j].b_shares[i + 1]
+            # Verify the value meaning that no IdP is missbehaving
+            assert idps[i].verify_share(t, (s, b), commitment_coeffs)
+            idps[i].receive_share(id, commitment_coeffs, (s, b))
+    # Every participant computes its share to the distributed secret.
+    for i in range(n):
+        idps[i].compute_final_secret(t, n)
+    return idps
+
+
+def setup_idps(t, n):
+    """
+    This function setups the IdPs and generates their sk and vk
+    sk = (x, y_1,...,y_q)
+    vk = (g2, g2^x, g2^y_0,...,g2^y_q)
+    So we neeed to exchange secrets to create x, and all the y's for the sk (q+1 times)
+    And afterwards we can create the vk for all the IdP's
+
+    :param t: The minimum number of authorities we need (threshold)
+    :param n: The total number of authorities we have
+    :return: The IdPs ready to run the SSO protocol
+    """
+    # Generating the IdPs
+    idps = []
+    for i in range(1, n + 1):
+        idps.append(IdP(i, t, n))
+    q = len(BpGroupHelper.hs)
+
+    # Creating the x part of the sk
+    idps = simulate_secret_sharing(idps, t, n)
+    for i in range(n):
+        # After sharing the secrets save their secret as the first part of the sk
+        idps[i].save_sk_x()
+        # And then make them generate new variables to re-share secrets for the y values
+        idps[i].generate_pedersen_vars(t, n)
+
+    # Creating the y's of the sk
+    for j in range(q):
+        idps = simulate_secret_sharing(idps, t, n)
+        for i in range(n):
+            idps[i].add_sk_y()
+            idps[i].generate_pedersen_vars(t, n)
+
+    # The sk is created so we need the vk of each IdP
+    for i in range(n):
+        idps[i].generate_vk()
+    return idps

@@ -9,7 +9,7 @@ class BpGroupHelper:
     Just a helper function to instantiate the BpGroup() once and then be able to call it from all functions
     """
 
-    G = g1 = g2 = e = o = hs = None
+    G = g1 = g2 = e = o = hs = g_secret = h_secret = None
 
     @staticmethod
     def setup(q):
@@ -22,6 +22,8 @@ class BpGroupHelper:
         BpGroupHelper.g1, BpGroupHelper.g2 = BpGroupHelper.G.gen1(), BpGroupHelper.G.gen2()
         BpGroupHelper.e, BpGroupHelper.o = BpGroupHelper.G.pair, BpGroupHelper.G.order()
         BpGroupHelper.hs = [BpGroupHelper.G.hashG1(("h%s" % i).encode()) for i in range(q)]
+        BpGroupHelper.g_secret = BpGroupHelper.G.hashG1("s_secret".encode())
+        BpGroupHelper.h_secret = BpGroupHelper.G.hashG1("h_secret".encode())
 
 
 class ElGamal:
@@ -67,11 +69,18 @@ class Polynomial:
     @staticmethod
     def evaluate(coeff, x):
         """
-        So we take the coefficient, and we multiply with the value x raised in the degree i
-        Based on how many coefficient we have can find the degree of the polynomial
-        Basically the first coefficient will be coeff[0] * x^0 then coeff[1] * x^1 then coeff[2] * x^2 etc.
+        We will use Horner's method to evaluate the polynomials https://en.wikipedia.org/wiki/Horner%27s_method
+        p(x) = coff_0 + x*(coff_1 + x*(coff_2 + ... + x*(coff_n-1 + x*coff_n)))
+        where coff_0 is the secret
+
+        :param coeff: Coefficients of the polynomial
+        :param x: The value x at which we evaluate the polynomial
+        :return: The result of the evaluation
         """
-        return sum([coeff[i] * (Bn(x) ** i) for i in range(len(coeff))])
+        result = coeff[-1]  # Take coff_n and start multiplying with x and adding the next coeff one. Following formula
+        for coff_i in reversed(coeff[:-1]):
+            result = result * x + coff_i
+        return result
 
     @staticmethod
     def lagrange_interpolation(indexes):
@@ -111,32 +120,6 @@ def to_challenge(elements):
     H = sha256()
     H.update(state.encode("utf8"))
     return Bn.from_binary(H.digest())
-
-
-def ttp_keygen(t, n):
-    """
-    Generates the key for the threshold credentials. This function is supposingly run by a Trusted Third Party (TTP)
-
-    :param t: the threshold required
-    :param n: the number of total authorities
-    :return: the secret keys for each authority (sk) and the verification keys for each authority (vk)
-    """
-    g2, o, hs = BpGroupHelper.g2, BpGroupHelper.o, BpGroupHelper.hs
-    # We need to make sure that the threshold is smaller that the number of authorities
-    assert n >= t > 0
-    # Generate the polynomials (these are the coefficients, which are just random numbers)
-    v = [o.random() for _ in
-         range(0, t)]  # Basically we generate how many number we need. The degree will be t-1 so t num
-    w = [[o.random() for _ in range(0, t)] for _ in range(len(BpGroupHelper.hs))]  # For every v we need q w's so t * q
-
-    # Generates the secret shares using shamir secret sharing
-    x = [Polynomial.evaluate(v, i) % o for i in range(1, n + 1)]
-    y = [[Polynomial.evaluate(wj, i) % o for wj in w] for i in range(1, n + 1)]
-
-    # Finally set the keys
-    sk = list(zip(x, y))
-    vk = [(g2, x[i] * g2, [y[i][j] * g2 for j in range(len(y[i]))]) for i in range(len(sk))]
-    return sk, vk
 
 
 def agg_key(vks):
@@ -184,3 +167,6 @@ def sort_attributes(attributes):
     :return: Sorted list of tuples
     """
     return sorted(attributes, key=lambda x: not x[1])
+
+
+
