@@ -3,7 +3,6 @@ from hashlib import sha256
 from bplib.bp import G2Elem
 from petlib.bn import Bn
 
-from pubKey import PubKey
 from credproof import CredProof
 import helper
 from helper import BpGroupHelper

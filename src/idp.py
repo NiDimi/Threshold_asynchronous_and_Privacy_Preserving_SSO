@@ -16,7 +16,7 @@ class IdP:
         self.commitment_coeffs = commitment_coeffs
         self.s_shares = s_shares
         self.b_shares = b_shares
-        self.all_commitment_coeffs = defaultdict(dict)
+        self.all_commitment_coeffs = {}
         self.all_shares = defaultdict(tuple)
         self.secret_share = None
         self.sk = [None, []]
