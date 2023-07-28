@@ -21,7 +21,7 @@ def test_idp_client_normal():
     threshold_opener = 2
     total_opener = 3
     BpGroupHelper.setup(5)
-    # Generate the entities
+    # Generate the entities in the protocol
     idps = setup_idps(threshold_idp, total_idp)
     openers = [Opener() for _ in range(total_opener)]
 
@@ -41,7 +41,7 @@ def test_idp_client_normal():
     sigs[1] = sigs[4] = None
     client.agg_cred(sigs)
     assert client.verify_sig()
-    proof = client.prove_id()
+    proof = client.prove_id(b"Domain")
     assert RP().verify_id(proof, aggr_vk)
 
     # Ban user
