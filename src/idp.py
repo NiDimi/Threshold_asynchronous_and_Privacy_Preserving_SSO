@@ -7,6 +7,7 @@ from petlib.bn import Bn
 import helper
 from helper import BpGroupHelper, Polynomial
 from request import Request
+from opener import ledger
 
 
 class IdP:
@@ -120,8 +121,8 @@ class IdP:
         assert self.verify_share(t, (final_s_share, final_b_share), final_comm_coeffs)
         self.secret_share = final_s_share
 
-    """The keys of the idp will have the format sk = (x, y_1,...,y_q) and 
-    vk = (g2, g2^x, g2^y_0,...,g2^y_q) so we need to generate q+1 shares and save it each time"""
+    """The keys of the idp will have the format sk = (x, y_1,...,y_q, y_q+1) and 
+    vk = (g2, g2^x, g2^y_0,...,g2^y_q, g2^y_q+1) so we need to generate q+1 shares and save it each time"""
     def save_sk_x(self):
         """
         Just save the x generated
@@ -145,7 +146,9 @@ class IdP:
 
     def provide_id(self, request):
         if not self.__verify_zkp(request):
+            print('FAILEEDDD')
             return 0
+        ledger[request.user_id] = request.opening_c
         return self.__sign_cred(request)
 
     def __verify_zkp(self, request: Request):
@@ -175,7 +178,7 @@ class IdP:
         """
         Basic PS signatures
         First we need to commit the public attributes since the user only commited the private C_pub = h^attributeP_i
-        c_1 = a_j^y_i, c_2 = h^x * b_j ^ y_j
+        c_1 = a_j^y_i, c_2 = h^x * b_j ^ y_j * user_pk ^j_q+1
 
         :param request: The request of the user containing the necessary elements
         :param sk: The secret key of which to use to sign
@@ -196,7 +199,8 @@ class IdP:
         c_2 = x * h
         for yi, bi in zip(y, list(b) + C_pub):  # We add all the private and then the public attributes
             c_2 += yi * bi
-
+        c_2 += request.h_secret * y[-1]
+        ledger[request.user_id] = request.opening_c
         return h, (c_1, c_2)
 
 

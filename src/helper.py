@@ -21,7 +21,9 @@ class BpGroupHelper:
         BpGroupHelper.G = BpGroup()
         BpGroupHelper.g1, BpGroupHelper.g2 = BpGroupHelper.G.gen1(), BpGroupHelper.G.gen2()
         BpGroupHelper.e, BpGroupHelper.o = BpGroupHelper.G.pair, BpGroupHelper.G.order()
-        BpGroupHelper.hs = [BpGroupHelper.G.hashG1(("h%s" % i).encode()) for i in range(q)]
+        # q+1 to add for the additional y we need for the openers. One h for each attribute + 1 h for the secret
+        BpGroupHelper.hs = [BpGroupHelper.G.hashG1(("h%s" % i).encode()) for i in range(q+1)]
+        # Generators for the commitments in the key generation of the IdPs
         BpGroupHelper.g_secret = BpGroupHelper.G.hashG1("s_secret".encode())
         BpGroupHelper.h_secret = BpGroupHelper.G.hashG1("h_secret".encode())
 
@@ -31,15 +33,15 @@ class ElGamal:
     Helper class to handle the ElGamal encryption's
     """
 
-    def __init__(self):
-        self.__keygen()
+    def __init__(self, g):
+        self.__keygen(g)
 
-    def __keygen(self):
+    def __keygen(self, g):
         """"
         Generates the secret and public keys
         """
         self.sk = BpGroupHelper.o.random()
-        self.pk = self.sk * BpGroupHelper.g1
+        self.pk = self.sk * g
 
     def encrypt(self, m):
         """
@@ -92,6 +94,8 @@ class Polynomial:
         :param indexes: The list of indices to interpolate
         :return: The list of Langrange coefficients
         """
+        if len(indexes) == 1:
+            return [1]
         o = BpGroupHelper.o
         l = []
         for i in indexes:

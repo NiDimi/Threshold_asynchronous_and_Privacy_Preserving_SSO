@@ -1,6 +1,6 @@
 from hashlib import sha256
 
-from bplib.bp import G1Elem
+from bplib.bp import G1Elem, G2Elem
 from petlib.bn import Bn
 
 import helper
@@ -12,16 +12,19 @@ from credproof import CredProof
 class Client:
     def __init__(self, attributes, vk):
         assert len(attributes) <= len(BpGroupHelper.hs)
-        self.__elgamal = ElGamal()
+        self.__elgamal = ElGamal(BpGroupHelper.g1)
         self.__attributes = attributes
         #  The hashed attributes in the style (hash, True/False) indicating private or not
         self.__hashed_attributes = helper.hash_attributes(attributes)
         self.__aggr_vk = vk
         self.__sig = None
+        self.__sk = BpGroupHelper.o.random()
+        self.__id = BpGroupHelper.o.random()
 
-    def request_id(self):
-        G, o, g1, hs = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1, BpGroupHelper.hs
+    def request_id(self, to, openers):
+        G, o, g1 = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1
         C, r = self.__create_commitment()
+
         h = G.hashG1(C.export())
         # El-gamal encryption
         enc = self.__encrypt_elgamal(h)
@@ -30,7 +33,8 @@ class Client:
         # ZKP
         pi_s = self.__create_zkp_idp(self.__elgamal.pk, C, k, r, h)
         public_attributes = ["" if attr[1] else attr[0] for attr in self.__attributes]
-        return Request(self.__elgamal.pk, C, cypher, pi_s, public_attributes)
+        c_opening = self.opening_setup(to, openers)
+        return Request(self.__id, self.__elgamal.pk, C, cypher, pi_s, public_attributes, c_opening, h * self.__sk)
 
     def __encrypt_elgamal(self, h):
         """
@@ -100,6 +104,31 @@ class Client:
         ra = [(wa[i] - c * self.__hashed_attributes[i][0]) % o for i in range(len(wa))]  # response for the attributes
         return c, rk, ra, rr
 
+    def opening_setup(self, to, openers):
+        """
+        Set up the C's required for the opening operation basically implementing shamir secret sharing
+        c0 = g2 ^ random
+        c1 = opener.public_key ^ random * s_i ^ g_q+1
+        where s_i is the share of the secret sk
+
+        :param to: The threshold necessary for the opening
+        :param openers: A list with all the openers
+        :return: the c as a dict in the format (i, [c0, c1])
+        """
+        o, g2 = BpGroupHelper.o, BpGroupHelper.g2,
+        no = len(openers)
+        coeff = [o.random() for _ in range(to - 1)]
+        coeff.insert(0, self.__sk)  # We add as the first coefficient the secret sk which we want to hide
+        c = {}
+        for i in range(1, no + 1):
+            s = Polynomial.evaluate(coeff, i)
+            r = o.random()
+            c0 = g2 * r
+            _, _, b = self.__aggr_vk
+            c1 = openers[i - 1].pk * r + b[-1] * s
+            c[i] = (c0, c1)
+        return c
+
     def unbind_sig(self, sig_prime):
         """
         Unblind the blinded sig which is basically is decrypting with el gamal
@@ -134,29 +163,32 @@ class Client:
     def verify_sig(self):
         """
         Verify the generation of the signature from the IdP and the aggregation
+        e(h, b_i ^ attribute_i) = e(s, g2)
 
         :return: True if it is correct false otherwise
         """
         e = BpGroupHelper.e
         g2, alpha, beta = self.__aggr_vk
         h, s = self.__sig
-        verification_result = alpha
+        verification_result = alpha + beta[-1] * self.__sk
         for i, attribute in enumerate(self.__hashed_attributes):
             verification_result += beta[i] * attribute[0]
         return not h.isinf() and e(h, verification_result) == e(s, g2)
 
-    def prove_id(self):
+    def prove_id(self, rp_domain):
+        domain_hash = BpGroupHelper.G.hashG1(rp_domain)
+        user_id = domain_hash * self.__sk
         # Randomise the sig
         h_prime, s_prime = self.__randomize_signature()
         sig_prime = h_prime, s_prime
         # Create the K
-        k, r = self.__create_k()
+        k, r, attribute_commitment = self.__commit_values()
         # Create the vu
         vu = r * h_prime
         # ZKP
         pi_v = self.__create_zkp_rp(sig_prime, r)
         public_attributes = ["" if attr[1] else attr[0] for attr in self.__attributes]
-        return CredProof(k, vu, sig_prime, pi_v, public_attributes)
+        return CredProof(user_id, k, vu, sig_prime, pi_v, public_attributes, h_prime * self.__sk, attribute_commitment)
 
     def __randomize_signature(self):
         """
@@ -170,21 +202,27 @@ class Client:
         h, s = self.__sig
         return h * r, s * r
 
-    def __create_k(self):
+    def __commit_values(self):
         """
         Create k in order to hide the private attributes and to prove correct form of the vk
         k = a * g2^r * b_i^priv_attribute_i
+        attributes_commitment = k * b_i^pub_attribute_i
 
         :return: The k created and the randomness it was to create it
         """
-        o = BpGroupHelper.o
+        G, o = BpGroupHelper.G, BpGroupHelper.o
         g2, alpha, beta = self.__aggr_vk
         r = o.random()
-        k = alpha + g2 * r
+        k = alpha
+        attribute_commitment = G2Elem.inf(G)
         for i, attribute in enumerate(self.__hashed_attributes):
             if attribute[1]:
                 k += attribute[0] * beta[i]
-        return k, r
+            else:
+                attribute_commitment += attribute[0] * beta[i]
+        k += r * g2
+        attribute_commitment += k
+        return k, r, attribute_commitment
 
     def __create_zkp_rp(self, sig, r):
         """
@@ -216,8 +254,5 @@ class Client:
         c = helper.to_challenge([g1, g2, alpha, Va, Vr] + hs + beta)
         # Compute the responses
         ra = [(wmi - c * attribute[0]) % o for wmi, attribute in zip(wa, self.__hashed_attributes) if wmi is not None]
-        # for i, attribute in enumerate(self.hashed_attributes):
-        #     if attribute[1]:
-        #         ra.append((wa[i] - c * attribute[0]) % o)
         rr = (wr - c * r) % o
         return c, ra, rr

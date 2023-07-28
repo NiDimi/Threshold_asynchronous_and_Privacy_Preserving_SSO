@@ -6,6 +6,7 @@ from petlib.bn import Bn
 from credproof import CredProof
 import helper
 from helper import BpGroupHelper
+from opener import ban_users
 
 
 class RP:
@@ -30,7 +31,18 @@ class RP:
                 aggr += Bn.from_binary(sha256(attribute).digest()) * beta[i]
 
         h, s = proof.sig
-        return not h.isinf() and e(h, proof.k + aggr) == e(s + proof.vu, g2)
+        # Check for 0 in h
+        if h.isinf():
+            return False
+        # Check for the correct construction of the signature
+        if e(h, proof.k + aggr) * e(proof.key_commitment, beta[-1]) != e(s + proof.vu, g2):
+            return False
+        # Lastly check if the signature is banned
+        user_banned = False
+        for rev_sig in ban_users.values():
+            if e(h, rev_sig) == e(proof.key_commitment, beta[-1]):
+                user_banned = True
+        return not user_banned
 
     def __verify_zkp(self, proof: CredProof, aggr_vk):
         """
