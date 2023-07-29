@@ -1,14 +1,22 @@
 class Request:
-    def __init__(self, C, c, r, attributes):
+    def __init__(self, user_id, pk, Cm, cypher, zkp, attributes, opening_params, h_secret):
         """
-        The request that the user sents to the IdP
+        The request the client sends to the IdP's for the credentials
 
-        :param C: The commitment of the users secret
-        :param c: The challenge created in a NIZKP
-        :param r: The responses of when creating a NIZKP. It holds (rt, rs)
-        :param attributes: The public attributes that the user wants to sign
+        :param user_id: The user_id that is requesting the credential
+        :param pk: Its public key in order to verify the knowledge of sk
+        :param Cm: The commitment of all the attributes
+        :param cypher: The encrypted el gamal of the attributes in the form (a, b)
+        :param zkp: The zero knowledge proof necessary parameters
+        :param attributes: The attributes with the private attributes removed as ""
+        :param opening_params: The parameters necessary to open the signature and verify it
+        :param h_secret: h^user_secret used for the signature in order to be able to deanonymize the user
         """
-        self.C = C
-        self.c = c
-        self.r = r
+        self.user_id = user_id
+        self.users_pk = pk
+        self.Cm = Cm
+        self.cypher = cypher
+        self.zkp = zkp
         self.attributes = attributes
+        self.opening_params = opening_params
+        self.h_secret = h_secret
