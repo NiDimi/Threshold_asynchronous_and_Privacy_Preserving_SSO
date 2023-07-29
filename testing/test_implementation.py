@@ -32,22 +32,28 @@ def test_idp_client_normal():
         (b"hidden3", True)]
     attributes = helper.sort_attributes(attributes)
     vk = [idp.vk for idp in idps]
+    # Remove one of the key for testing, we need just the threshold not all
     vk[0] = None
     aggr_vk = helper.agg_key(vk)
     client = Client(attributes, aggr_vk)
+    # Communication with Client - IdP
     request = client.request_id(threshold_opener, openers)
-    sigs_prime = [idp.provide_id(request) for idp in idps]
+    sigs_prime = [idp.provide_id(request, aggr_vk) for idp in idps]
     sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
+    # Hide some sigs so we can test the threshold setting
     sigs[1] = sigs[4] = None
+    # Creaate the aggregated signature which would be stored in the client
     client.agg_cred(sigs)
     assert client.verify_sig()
-    proof = client.prove_id(b"Domain")
-    assert RP().verify_id(proof, aggr_vk)
+    # Communication with Client - RP
+    rp = RP(b"Domain")
+    proof = client.prove_id(rp.domain)
+    assert rp.verify_id(proof, aggr_vk)
 
     # Ban user
     assert deanonymize(openers, proof, aggr_vk) == request.user_id
 
     # Check again
-    assert not RP().verify_id(proof, aggr_vk)
+    assert not rp.verify_id(proof, aggr_vk)
 
 

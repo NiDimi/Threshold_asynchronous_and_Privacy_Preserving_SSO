@@ -11,7 +11,7 @@ from opener import ledger
 
 
 class IdP:
-    def __init__(self, id=1, t=1, n=2):
+    def __init__(self, id, t, n):
         commitment_coeffs, s_shares, b_shares = self.generate_pedersen_vars(t, n)
         self.id = id
         self.commitment_coeffs = commitment_coeffs
@@ -24,6 +24,8 @@ class IdP:
         self.vk = ()
 
     """--------------------------CODE FOR THE GENERATION OF THE KEYS------------------------"""
+
+    # The repo https://github.com/lovesh/secret-sharing-schemes was very helpful in coding the key generation
 
     def generate_pedersen_vars(self, t, n):
         """
@@ -123,6 +125,7 @@ class IdP:
 
     """The keys of the idp will have the format sk = (x, y_1,...,y_q, y_q+1) and 
     vk = (g2, g2^x, g2^y_0,...,g2^y_q, g2^y_q+1) so we need to generate q+1 shares and save it each time"""
+
     def save_sk_x(self):
         """
         Just save the x generated
@@ -144,37 +147,70 @@ class IdP:
 
     """--------------------------CODE FOR THE PROTOCOL------------------------"""
 
-    def provide_id(self, request):
-        if not self.__verify_zkp(request):
-            print('FAILEEDDD')
+    def provide_id(self, request, vk):
+        G = BpGroupHelper.G
+        h = G.hashG1(request.Cm.export())  # generate the common base with the user to add the public attributes
+        if not self.__verify_zkp(request, h):
             return 0
-        ledger[request.user_id] = request.opening_c
-        return self.__sign_cred(request)
+        if not self.__verify_opening_proof(request.opening_params, request, vk, h):
+            return 0
+        return self.__sign_cred(request, h)
 
-    def __verify_zkp(self, request: Request):
+    def __verify_zkp(self, request: Request, h):
         """
         Verify the zkp created by the user
         Va = a_i^c * g1^rk_i
         Vb = b_i^c * pk^rk_i * h ^ ra_i
         Vc = C^c * g1^rr * h_i ^ ra_i
+        Vs = h_secret^c * h^rs
 
         :param request: The request of the user containing the necessary elements
-        :return: True if c = Hash(g1 || g2 || C || h || Vc || hs || Va || Vb) false otherwise
+        :return: True if c = Hash(g1 || g2 || C || h || Vc || Vs || hs || Va || Vb) false otherwise
         """
         G, g1, hs, g2 = BpGroupHelper.G, BpGroupHelper.g1, BpGroupHelper.hs, BpGroupHelper.g2
-        h = G.hashG1(request.C.export())
         (a, b) = zip(*request.cypher)
-        c, rk, ra, rr = request.zkp
+        c, rk, ra, rr, rs = request.zkp
         # Compute the commitments
         Va = [c * a[i] + rk[i] * g1 for i in range(len(rk))]  # For the elgamal encryption the alpha
         # For the elgamal encryption the beta
         Vb = [c * b[i] + rk[i] * request.users_pk + ra[i] * h for i in range(len(request.cypher))]
-        Vc = c * request.C + rr * g1  # For the commitment of the attributes (C)
+        Vc = c * request.Cm + rr * g1  # For the commitment of the attributes (C)
         for i in range(len(ra)):
             Vc += ra[i] * hs[i]
-        return c == helper.to_challenge([g1, g2, request.C, h, Vc] + hs + Va + Vb)
+        Vs = c * request.h_secret + h * rs
+        return c == helper.to_challenge([g1, g2, request.Cm, h, Vc, Vs] + hs + Va + Vb)
 
-    def __sign_cred(self, request: Request):
+    def __verify_opening_proof(self, opening_params, request, vk, h):
+        """
+        Verifies that the shares the user created for the secret is correct
+        Vc0 = c0^c * g2^rr
+        True if challenge = Hash(g2 || h || Vc0 || Vc1) and e(h_secret * h_coeff^(i^j), beta[-1]) = Vc1
+
+        :param opening_params: The parameters used for the opening method
+        :param request: The request of the user containing the necessary elements
+        :param vk: The verification key
+        :return: True if it is correct false otherwise
+        """
+        G, g2, e = BpGroupHelper.G, BpGroupHelper.g2, BpGroupHelper.e
+        c, h_coeff = opening_params
+        for i, c_i in enumerate(c.values()):
+            c0, c1, proof = c_i
+            challenge, rr, Vc1 = proof
+            # ZKP for the c0
+            Vc0 = challenge * c0 + g2 * rr
+            coeffs_culculation = G1Elem.inf(G)
+            _, _, beta = vk
+            # Proof for the c1
+            for j, coeffs in enumerate(h_coeff):
+                coeffs_culculation += coeffs * ((i+1) * (j + 1))
+            if helper.to_challenge([g2, h, Vc0, Vc1]) != challenge \
+                    or Vc1 != e(request.h_secret + coeffs_culculation, beta[-1]):
+                return False
+        # Publish to the ledger the opening c's
+        ledger[request.user_id] = c
+        return True
+
+    def __sign_cred(self, request: Request, h):
         """
         Basic PS signatures
         First we need to commit the public attributes since the user only commited the private C_pub = h^attributeP_i
@@ -185,7 +221,6 @@ class IdP:
         :return: the signature
         """
         G = BpGroupHelper.G
-        h = G.hashG1(request.C.export())  # generate the common base with the user to add the public attributes
         # (x, y) = sk
         x, y = self.sk[0], self.sk[1]
         (a, b) = zip(*request.cypher)
@@ -200,7 +235,6 @@ class IdP:
         for yi, bi in zip(y, list(b) + C_pub):  # We add all the private and then the public attributes
             c_2 += yi * bi
         c_2 += request.h_secret * y[-1]
-        ledger[request.user_id] = request.opening_c
         return h, (c_1, c_2)
 
 
@@ -232,9 +266,9 @@ def simulate_secret_sharing(idps, t, n):
 def setup_idps(t, n):
     """
     This function setups the IdPs and generates their sk and vk
-    sk = (x, y_1,...,y_q)
-    vk = (g2, g2^x, g2^y_0,...,g2^y_q)
-    So we neeed to exchange secrets to create x, and all the y's for the sk (q+1 times)
+    sk = (x, y_1,...,y_q, y_q)
+    vk = (g2, g2^x, g2^y_0,...,g2^y_q, g2 ^y_q)
+    So we neeed to exchange secrets to create x, and all the y's for the sk (q)
     And afterwards we can create the vk for all the IdP's
 
     :param t: The minimum number of authorities we need (threshold)
