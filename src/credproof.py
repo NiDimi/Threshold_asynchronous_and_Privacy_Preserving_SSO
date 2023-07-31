@@ -1,6 +1,3 @@
-from helper import pack, unpack
-
-
 class CredProof:
     def __init__(self, user_id, k, vu, sig, zkp, attributes, h_secret, attributes_commitment):
         """
@@ -25,13 +22,3 @@ class CredProof:
         self.h_secret = h_secret
         self.attributes_commitment = attributes_commitment
 
-    def to_json(self):
-        """
-        Just packs the whole class
-        :return: The packed class
-        """
-        return pack(self.__dict__)
-
-    @classmethod
-    def from_json(cls, data):
-        return cls(**unpack(data))

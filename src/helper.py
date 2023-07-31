@@ -1,9 +1,7 @@
 from hashlib import sha256
 
-from bplib.bp import BpGroup, G2Elem
+from bplib.bp import BpGroup, G1Elem, G2Elem
 from petlib.bn import Bn
-from petlib.pack import encode, decode
-from binascii import hexlify, unhexlify
 
 
 class BpGroupHelper:
@@ -24,7 +22,7 @@ class BpGroupHelper:
         BpGroupHelper.g1, BpGroupHelper.g2 = BpGroupHelper.G.gen1(), BpGroupHelper.G.gen2()
         BpGroupHelper.e, BpGroupHelper.o = BpGroupHelper.G.pair, BpGroupHelper.G.order()
         # q+1 to add for the additional y we need for the openers. One h for each attribute + 1 h for the secret
-        BpGroupHelper.hs = [BpGroupHelper.G.hashG1(("h%s" % i).encode()) for i in range(q + 1)]
+        BpGroupHelper.hs = [BpGroupHelper.G.hashG1(("h%s" % i).encode()) for i in range(q+1)]
         # Generators for the commitments in the key generation of the IdPs
         BpGroupHelper.g_secret = BpGroupHelper.G.hashG1("s_secret".encode())
         BpGroupHelper.h_secret = BpGroupHelper.G.hashG1("h_secret".encode())
@@ -175,14 +173,4 @@ def sort_attributes(attributes):
     return sorted(attributes, key=lambda x: not x[1])
 
 
-"""
-The following two functions are used to pack and unpack data in order to communicate over AWS
-"""
 
-
-def pack(x):
-    return hexlify(encode(x)).decode('utf-8')
-
-
-def unpack(x):
-    return decode(unhexlify(x.encode('utf-8')))
