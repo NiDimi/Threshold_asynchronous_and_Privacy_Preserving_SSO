@@ -12,73 +12,54 @@ from idp import IdP, setup_idps
 from rp import RP
 from opener import Opener, check_sig, deanonymize, ban_users, ledger
 
-"""
-Write the test an number of times and hold the time 
-Parameters ti=3, ni=4, to=2, no=3, attributes=3, ban users = 10
-
-"""
-time_unit = 1000  # For ms
-attributes: List[Tuple[bytes, bool]] = [
+TIME_UNIT = 1000
+ATTRIBUTES: List[Tuple[bytes, bool]] = [
     (b"hidden1", True),
     (b"hidden2", True),
     (b"public1", False),
 ]
-attributes = helper.sort_attributes(attributes)
-
-threshold_idp = 3
-total_idp = 4
-threshold_opener = 2
-total_opener = 3
-
-num_iterations = 10000
+ITERATIONS = 30
 
 
-def timing_test():
-    time.sleep(5)
-    idps = setup_idps(threshold_idp, total_idp)
-    # Generate the entities in the protocol
-    openers = [Opener() for _ in range(total_opener)]
-    vk = [idp.vk for idp in idps]
-    aggr_vk = helper.agg_key(vk)
-    client = Client(attributes, aggr_vk)
-    rp = RP(b"Domain")
+def timing_test(idps, client, rp, openers, aggr_vk, to):
+    # time.sleep(2.5)
     # Request ID
     start_time = time.time()
-    request = client.request_id(threshold_opener, openers)
+    request = client.request_id(to, openers)
     end_time = time.time()
-    request_id_time = (end_time - start_time) * time_unit
+    request_id_time = (end_time - start_time) * TIME_UNIT
     # Provide ID
     start_time = time.time()
     sigs_prime = [idp.provide_id(request, aggr_vk) for idp in idps]
     end_time = time.time()
-    provide_id_time = (end_time - start_time) * time_unit
+    provide_id_time = (end_time - start_time) * TIME_UNIT
     # Unblind
     start_time = time.time()
     sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
     end_time = time.time()
-    unblind_time = (end_time - start_time) * time_unit
+    unblind_time = (end_time - start_time) * TIME_UNIT
     # Aggregate sigs
     start_time = time.time()
     client.agg_cred(sigs)
     end_time = time.time()
-    aggr_sig_time = (end_time - start_time) * time_unit
+    aggr_sig_time = (end_time - start_time) * TIME_UNIT
     assert client.verify_sig()  # Just verify the correct result
     # Prove ID
     start_time = time.time()
     proof = client.prove_id(rp.domain)
     end_time = time.time()
-    prove_id_time = (end_time - start_time) * time_unit
+    prove_id_time = (end_time - start_time) * TIME_UNIT
     # Verify ID
     start_time = time.time()
     temp = rp.verify_id(proof, aggr_vk)
     end_time = time.time()
-    verify_id_time = (end_time - start_time) * time_unit
+    verify_id_time = (end_time - start_time) * TIME_UNIT
     assert temp  # Just check everything went okay
     # Ban user
     start_time = time.time()
     id = deanonymize(openers, proof, aggr_vk)
     end_time = time.time()
-    deanonymize_time = (end_time - start_time) * time_unit
+    deanonymize_time = (end_time - start_time) * TIME_UNIT
     assert id == request.user_id
     # Remove the add users because it is going to grow exponential otherwise both ledger and ban_users
     ban_users.pop(id)
@@ -86,9 +67,22 @@ def timing_test():
     return request_id_time, provide_id_time, unblind_time, aggr_sig_time, prove_id_time, verify_id_time, deanonymize_time
 
 
-if __name__ == "__main__":
+def setup(q, ti, ni, to, no):
+    # Setup
+    BpGroupHelper.setup(q)
+    idps = setup_idps(ti, ni)
+    # Generate the entities in the protocol
+    openers = [Opener() for _ in range(no)]
+    vk = [idp.vk for idp in idps]
+    aggr_vk = helper.agg_key(vk)
+    client = Client(ATTRIBUTES, aggr_vk)
+    rp = RP(b"Domain")
+    return idps, client, rp, openers, aggr_vk
+
+
+def start_test(q, ti, ni, to, no):
+    idps, client, rp, openers, aggr_vk = setup(q, ti, ni, to, no)
     # just add 10 banned random users and 10 existing users in the ledger
-    BpGroupHelper.setup(3)
     o, g2 = BpGroupHelper.o, BpGroupHelper.g2
     for i in range(10):
         r = o.random()
@@ -100,9 +94,11 @@ if __name__ == "__main__":
         writer = csv.DictWriter(file, fieldnames)
         writer.writeheader()
 
-        for i in range(num_iterations):
+        for i in range(ITERATIONS):
             request_id_time, provide_id_time, unblind_time, aggr_sig_time, prove_id_time, verify_id_time, \
-                deanonymize_time = timing_test()
+                deanonymize_time = timing_test(idps, client, rp, openers, aggr_vk, threshold_opener)
+            # if deanonymize_time > 200 or provide_id_time > 100:
+            #     continue
             writer.writerow({'request_id': request_id_time,
                              'provide_id': provide_id_time,
                              'unblind': unblind_time,
@@ -111,4 +107,12 @@ if __name__ == "__main__":
                              'verify_id': verify_id_time,
                              'deanonymize': deanonymize_time})
             print(i)
+
+
+if __name__ == "__main__":
+    threshold_idp = 3
+    total_idp = 4
+    threshold_opener = 2
+    total_opener = 3
+    start_test(3, threshold_idp, total_idp, threshold_opener, total_opener)
     print("DONE")

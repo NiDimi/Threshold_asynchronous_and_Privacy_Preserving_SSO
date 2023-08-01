@@ -11,7 +11,7 @@ from credproof import CredProof
 
 class Client:
     def __init__(self, attributes, vk):
-        assert len(attributes) <= len(BpGroupHelper.hs)
+        assert len(attributes) <= len(BpGroupHelper.hs) - 1
         self.__elgamal = ElGamal(BpGroupHelper.g1)
         self.__attributes = attributes
         #  The hashed attributes in the style (hash, True/False) indicating private or not
@@ -22,6 +22,7 @@ class Client:
         self.__id = BpGroupHelper.o.random()
 
     def request_id(self, to, openers):
+        self.__hashed_attributes = helper.hash_attributes(self.__attributes)
         G, o, g1 = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1
         Cm, r = self.__create_commitment()
 
@@ -296,3 +297,7 @@ class Client:
         rr = (wr - c * r) % o
         rs = (ws - c * self.__secret) % o
         return c, ra, rr, rs
+
+    def set_attributes(self, attributes):
+        self.__attributes = attributes
+        self.__hashed_attributes = helper.hash_attributes(attributes)
