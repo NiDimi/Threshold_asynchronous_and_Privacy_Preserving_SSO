@@ -21,7 +21,8 @@ time_unit = 1000  # For ms
 attributes: List[Tuple[bytes, bool]] = [
     (b"hidden1", True),
     (b"hidden2", True),
-    (b"public1", False), ]
+    (b"public1", False),
+]
 attributes = helper.sort_attributes(attributes)
 
 threshold_idp = 3
@@ -29,10 +30,11 @@ total_idp = 4
 threshold_opener = 2
 total_opener = 3
 
-num_iterations = 3000
+num_iterations = 10000
 
 
 def timing_test():
+    time.sleep(5)
     idps = setup_idps(threshold_idp, total_idp)
     # Generate the entities in the protocol
     openers = [Opener() for _ in range(total_opener)]
