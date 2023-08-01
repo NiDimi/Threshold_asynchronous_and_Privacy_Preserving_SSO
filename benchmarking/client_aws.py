@@ -20,7 +20,12 @@ Code strongly inspired by https://github.com/asonnino/coconut-timing
 """
 
 # Static fields
-SERVER_ADDR = ["192.168.1.64"]
+SERVER_ADDR = [
+    "ec2-13-41-165-172.eu-west-2.compute.amazonaws.com",
+    "ec2-18-168-72-172.eu-west-2.compute.amazonaws.com",
+    "ec2-18-134-76-159.eu-west-2.compute.amazonaws.com",
+    "ec2-18-169-119-204.eu-west-2.compute.amazonaws.com",
+]
 
 ROUTE_SERVER_INFO = "/"
 ROUTE_IDP_SET = "/idp/set"
@@ -117,7 +122,7 @@ if __name__ == "__main__":
     print("Test connection: OKAY")
     # We need to create the IdP keys here. Basically emulate the secret sharing protocol
     BpGroupHelper.setup(3)
-    idps = setup_idps(1, 1)
+    idps = setup_idps(3, 4)
     # Get the aggregate vk
     vk = [idp.vk for idp in idps]
     aggr_vk = helper.agg_key(vk)
@@ -138,7 +143,7 @@ if __name__ == "__main__":
 
     # Aggregate the sigs
     sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
-
+    sigs[-1] = None
     client.agg_cred(sigs)
     assert client.verify_sig()
 
