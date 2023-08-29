@@ -79,6 +79,6 @@ class RP:
         if e(h, proof.k + aggr) * e(proof.h_secret, beta[-1]) != e(s + proof.vu, g2):
             return False  # Check if the sig is correct
         # Lastly check if the signature is banned
-        if any(e(h, rev_sig) == e(proof.h_secret, beta[-1]) for rev_sig in ban_users.values()):
+        if any(e(h, ban_sig) == e(proof.h_secret, beta[-1]) for ban_sig in ban_users.values()):
             return False
         return True
