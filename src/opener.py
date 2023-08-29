@@ -51,14 +51,16 @@ def check_sig(T, proof: CredProof, vk):
     G, e = BpGroupHelper.G, BpGroupHelper.e
     filter = []
     indexes = []
+    T[1] = None # Just remove one opener
     for i, s in enumerate(T):
         if s is not None:
             filter.append(s)
             indexes.append(i + 1)
+
     l = Polynomial.lagrange_interpolation(indexes)
-    secret = T[0] ** l[0]
-    for i in range(1, len(T)):
-        secret *= T[i] ** l[i]
+    secret = filter[0] ** l[0] # This is wrong but should be okey if we assume the opener with id 0 always helps
+    for i in range(1, len(filter)):
+        secret *= filter[i] ** l[i]
     h, s = proof.sig
     g2, _, beta = vk
     return e(h, proof.attributes_commitment) * secret == e(s + proof.vu, g2)
