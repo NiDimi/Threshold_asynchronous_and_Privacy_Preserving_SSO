@@ -103,7 +103,7 @@ def create_revoked_sig(secret_shares):
             filter.append(s)
             indexes.append(i + 1)
     l = Polynomial.lagrange_interpolation(indexes)
-    revoked_sig = secret_shares[0] * l[0]
-    for i in range(1, len(secret_shares)):
-        revoked_sig += secret_shares[i] * l[i]
+    revoked_sig = filter[0] * l[0]
+    for i in range(1, len(filter)):
+        revoked_sig += filter[i] * l[i]
     return revoked_sig

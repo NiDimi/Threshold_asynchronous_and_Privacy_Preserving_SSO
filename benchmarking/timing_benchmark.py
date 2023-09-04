@@ -18,48 +18,56 @@ ATTRIBUTES: List[Tuple[bytes, bool]] = [
     (b"hidden2", True),
     (b"public1", False),
 ]
-ITERATIONS = 30
+ITERATIONS = 100
+RUNS = 10
 
 
 def timing_test(idps, client, rp, openers, aggr_vk, to):
     # time.sleep(2.5)
     # Request ID
-    start_time = time.time()
-    request = client.request_id(to, openers)
-    end_time = time.time()
-    request_id_time = (end_time - start_time) * TIME_UNIT
+    start_time = time.perf_counter()
+    for i in range(RUNS):
+        request = client.request_id(to, openers)
+    end_time = time.perf_counter() 
+    request_id_time = (end_time - start_time) * TIME_UNIT / RUNS
     # Provide ID
-    start_time = time.time()
-    sigs_prime = [idp.provide_id(request, aggr_vk) for idp in idps]
-    end_time = time.time()
-    provide_id_time = (end_time - start_time) * TIME_UNIT
+    start_time = time.perf_counter()
+    for i in range(RUNS):
+        sigs_prime = [idp.provide_id(request, aggr_vk) for idp in idps]
+    end_time = time.perf_counter() 
+    provide_id_time = (end_time - start_time) * TIME_UNIT / RUNS
     # Unblind
-    start_time = time.time()
-    sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
-    end_time = time.time()
-    unblind_time = (end_time - start_time) * TIME_UNIT
+    start_time = time.perf_counter()
+    for i in range(RUNS):
+        sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
+    end_time = time.perf_counter() 
+    unblind_time = (end_time - start_time) * TIME_UNIT / RUNS
     # Aggregate sigs
-    start_time = time.time()
-    client.agg_cred(sigs)
-    end_time = time.time()
-    aggr_sig_time = (end_time - start_time) * TIME_UNIT
+    start_time = time.perf_counter()
+    for i in range(RUNS):
+        client.agg_cred(sigs)
+    end_time = time.perf_counter()
+    aggr_sig_time = (end_time - start_time) * TIME_UNIT / RUNS
     assert client.verify_sig()  # Just verify the correct result
     # Prove ID
-    start_time = time.time()
-    proof = client.prove_id(rp.domain)
-    end_time = time.time()
-    prove_id_time = (end_time - start_time) * TIME_UNIT
+    start_time = time.perf_counter()
+    for i in range(RUNS):
+        proof = client.prove_id(rp.domain)
+    end_time = time.perf_counter() 
+    prove_id_time = (end_time - start_time) * TIME_UNIT / RUNS
     # Verify ID
-    start_time = time.time()
-    temp = rp.verify_id(proof, aggr_vk)
-    end_time = time.time()
-    verify_id_time = (end_time - start_time) * TIME_UNIT
+    start_time = time.perf_counter()
+    for i in range(RUNS):
+        temp = rp.verify_id(proof, aggr_vk)
+    end_time = time.perf_counter() 
+    verify_id_time = (end_time - start_time) * TIME_UNIT / RUNS
     assert temp  # Just check everything went okay
     # Ban user
-    start_time = time.time()
-    id = deanonymize(openers, proof, aggr_vk)
-    end_time = time.time()
-    deanonymize_time = (end_time - start_time) * TIME_UNIT
+    start_time = time.perf_counter()
+    for i in range(RUNS):
+        id = deanonymize(openers, proof, aggr_vk)
+    end_time = time.perf_counter() 
+    deanonymize_time = (end_time - start_time) * TIME_UNIT / RUNS
     assert id == request.user_id
     # Remove the add users because it is going to grow exponential otherwise both ledger and ban_users
     ban_users.pop(id)
@@ -97,8 +105,6 @@ def start_test(q, ti, ni, to, no):
         for i in range(ITERATIONS):
             request_id_time, provide_id_time, unblind_time, aggr_sig_time, prove_id_time, verify_id_time, \
                 deanonymize_time = timing_test(idps, client, rp, openers, aggr_vk, threshold_opener)
-            # if deanonymize_time > 200 or provide_id_time > 100:
-            #     continue
             writer.writerow({'request_id': request_id_time,
                              'provide_id': provide_id_time,
                              'unblind': unblind_time,
