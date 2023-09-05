@@ -16,6 +16,7 @@ TIME_UNIT = 1000
 ATTRIBUTES: List[Tuple[bytes, bool]] = [
     (b"hidden1", True),
     (b"hidden2", True),
+    (b"hidden3", True),
     (b"public1", False),
 ]
 ITERATIONS = 100
@@ -94,7 +95,7 @@ def start_test(q, ti, ni, to, no):
     o, g2 = BpGroupHelper.o, BpGroupHelper.g2
     for i in range(10):
         r = o.random()
-        ban_users[r] = r * g2
+        # ban_users[r] = r * g2
         ledger[r] = {1: (r * g2, r * g2, (r * g2)), 2: (r * g2, r * g2, (r * g2))}
     # Open file
     with open("timing_benchmark.csv", mode="w", newline="") as file:
@@ -120,5 +121,5 @@ if __name__ == "__main__":
     total_idp = 4
     threshold_opener = 2
     total_opener = 3
-    start_test(3, threshold_idp, total_idp, threshold_opener, total_opener)
+    start_test(4, threshold_idp, total_idp, threshold_opener, total_opener)
     print("DONE")
