@@ -16,7 +16,7 @@ from opener import Opener, check_sig, deanonymize, ban_users, ledger
 TIME_UNIT = 1000  # For ms
 ATTRIBUTES: List[Tuple[bytes, bool]] = [(b"private", True)]  # We always have to have one private
 
-ITERATIONS = 2
+ITERATIONS = 100
 MAX_ATTRIBUTES = 19
 
 
