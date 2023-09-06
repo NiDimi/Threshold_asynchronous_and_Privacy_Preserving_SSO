@@ -1,9 +1,12 @@
+import csv
 import sys
+import time
 from typing import List, Tuple
 
 from binascii import hexlify
 from json import loads, dumps
 
+import grequests
 import requests
 from petlib.bn import Bn
 
@@ -26,16 +29,29 @@ SERVER_ADDR = [
     "ec2-18-134-76-159.eu-west-2.compute.amazonaws.com",
     "ec2-18-169-119-204.eu-west-2.compute.amazonaws.com",
 ]
+# SERVER_ADDR = [
+#     "127.0.0.1",
+# ]
 
 ROUTE_SERVER_INFO = "/"
 ROUTE_IDP_SET = "/idp/set"
 ROUTE_IDP_PROVIDEID = "/idp/provideid"
 ROUT_RP_VERIFYID = "/rp/verifyid"
 
+ITERATIONS = 100
+
+# timings
+mem = []
+
+total_idp = len(SERVER_ADDR)
+threshold_idp = 1
+
 """
 ------------------------------------ Functions ---------------------------------------------------------
 """
-
+def get_t_number(numbers):
+    sorted_numbers = sorted(numbers)
+    return sorted_numbers[threshold_idp-1]
 
 def test_connection():
     """
@@ -48,6 +64,29 @@ def test_connection():
             url
         )
         assert loads(r.text)["status"] == "OK"
+
+
+#
+def async_request(route, json):
+    unsent_request = [
+        grequests.post(
+            "http://" + addr + ":" + str(80) + route,
+            data=dumps(json)
+        )
+        for addr in SERVER_ADDR
+    ]
+    responses = grequests.map(unsent_request, size=len(SERVER_ADDR))
+    sigs = []
+    numbers = []
+    for r in responses:
+        assert loads(r.text)["status"] == "OK"
+        sig = unpack(loads(r.text)["load"])
+        sigs.append(sig)
+        numbers.append(r.elapsed.total_seconds())
+    elapsed_time = get_t_number(numbers)
+    mem.append({'time': elapsed_time})
+
+    return sigs
 
 
 def set_idp_keys(idps, aggr_vk):
@@ -81,18 +120,7 @@ def client_request_id(request):
     """
     json = {"request": request.to_json()}
     sigs = []
-    for server in SERVER_ADDR:
-        url = "http://" + server + ":" + str(80) + ROUTE_IDP_PROVIDEID
-        data = dumps(json)
-        print("Sending request for signature to the IdP", url, data)
-        r = requests.post(
-            url,
-            data
-        )
-        assert loads(r.text)["status"] == "OK"
-        sig = unpack(loads(r.text)["load"])
-        sigs.append(sig)
-    return sigs
+    return async_request(ROUTE_IDP_PROVIDEID, json)
 
 
 def send_proof(proof):
@@ -113,40 +141,59 @@ def send_proof(proof):
     assert loads(r.text)["status"] == "OK"
 
 
+def save():
+    with open("latency.csv", mode="a", newline="") as file:
+        fieldnames = ["Threshold", "Time"]
+        writer = csv.DictWriter(file, fieldnames)
+        # writer.writeheader()
+        for i in range(len(mem)):
+            writer.writerow({fieldnames[0]: threshold_idp, fieldnames[1]: mem[i]["time"] * 1000}, )
+
+
 """
 ------------------------------------ start of the program ---------------------------------------------------------
 """
 if __name__ == "__main__":
+    attributes: List[Tuple[bytes, bool]] = [
+        (b"hidden1", True),
+        (b"hidden2", True),
+        (b"hidden3", True),
+        (b"public1", False)]
     # Simply test the connection
     test_connection()
     print("Test connection: OKAY")
     # We need to create the IdP keys here. Basically emulate the secret sharing protocol
-    BpGroupHelper.setup(3)
-    idps = setup_idps(3, 4)
-    # Get the aggregate vk
-    vk = [idp.vk for idp in idps]
-    aggr_vk = helper.agg_key(vk)
-    set_idp_keys(idps, aggr_vk)  # Send to each IdP server the key generated when emulating the ss
-    print("Keys set: OKAY")
+    BpGroupHelper.setup(len(attributes))
+    total_opener = 3
+    threshold_opener = 2
+    for i in range(1, total_idp + 1):
+        threshold_idp = i
 
-    # Sending id request to the IdP
-    attributes: List[Tuple[bytes, bool]] = [
-        (b"hidden1", True),
-        (b"hidden2", True),
-        (b"public1", False)]
-    client = Client(attributes, aggr_vk)
-    # We don't really care about the openers, so we pass arbitrary values
-    openers = [Opener() for _ in range(2)]
-    request = client.request_id(1, openers)
-    sigs_prime = client_request_id(request)
-    print("Sig: RECEIVED")
+        idps = setup_idps(1, total_idp)
+        # Get the aggregate vk
+        vk = [idp.vk for idp in idps]
+        aggr_vk = helper.agg_key(vk)
+        set_idp_keys(idps, aggr_vk)  # Send to each IdP server the key generated when emulating the ss
+        print("Keys set: OKAY")
+        del mem[:]
+        print("Starting with IdPs:", threshold_idp)
+
+        # Sending id request to the IdP
+        client = Client(attributes, aggr_vk)
+        openers = [Opener() for _ in range(total_opener)]
+        request = client.request_id(threshold_opener, openers)
+        for _ in range(ITERATIONS):
+            sigs_prime = client_request_id(request)
+            time.sleep(5)
+        print("Sig: RECEIVED")
+        save()
 
     # Aggregate the sigs
     sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
-    sigs[-1] = None
     client.agg_cred(sigs)
     assert client.verify_sig()
 
     proof = client.prove_id(b"Domain")
     send_proof(proof)
     print("Proof: VALIDATED")
+    print(mem)
