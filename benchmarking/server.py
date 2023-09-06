@@ -22,7 +22,7 @@ aggr_vk = None
 rp = RP(b"Domain")
 
 # Start the lib
-BpGroupHelper.setup(3)
+BpGroupHelper.setup(4)
 
 
 # make packet for client
