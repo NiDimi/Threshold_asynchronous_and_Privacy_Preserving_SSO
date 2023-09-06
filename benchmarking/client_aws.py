@@ -199,16 +199,16 @@ if __name__ == "__main__":
         save_idp()
 
     # Aggregate the sigs
-    sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
-    client.agg_cred(sigs)
-    assert client.verify_sig()
-
-    proof = client.prove_id(b"Domain")
-    del mem[:]
-    for _ in range(ITERATIONS):
-        send_proof(proof)
-        time.sleep(5)
-    print("Proof: VALIDATED")
-    save_rp()
+    # sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
+    # client.agg_cred(sigs)
+    # assert client.verify_sig()
+    #
+    # proof = client.prove_id(b"Domain")
+    # del mem[:]
+    # for _ in range(ITERATIONS):
+    #     send_proof(proof)
+    #     time.sleep(5)
+    # print("Proof: VALIDATED")
+    # save_rp()
 
     # print(mem)
