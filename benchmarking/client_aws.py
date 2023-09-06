@@ -49,9 +49,12 @@ threshold_idp = 1
 """
 ------------------------------------ Functions ---------------------------------------------------------
 """
+
+
 def get_t_number(numbers):
     sorted_numbers = sorted(numbers)
-    return sorted_numbers[threshold_idp-1]
+    return sorted_numbers[threshold_idp - 1]
+
 
 def test_connection():
     """
@@ -66,7 +69,6 @@ def test_connection():
         assert loads(r.text)["status"] == "OK"
 
 
-#
 def async_request(route, json):
     unsent_request = [
         grequests.post(
@@ -130,24 +132,32 @@ def send_proof(proof):
     :param proof: The proof of the client
     """
     json = {"proof": proof.to_json()}
-    url = "http://" + SERVER_ADDR[0] + ":" + str(80) + ROUT_RP_VERIFYID
-    data = dumps(json)
-    print("Sending proof to the RP", url, data)
-    r = requests.post(
-        url,
-        data
-    )
-    print(loads(r.text))
-    assert loads(r.text)["status"] == "OK"
+    unsent_request = [grequests.post(
+        f"http://{SERVER_ADDR[0]}:80{ROUT_RP_VERIFYID}",
+        data=dumps(json))]
+    responses = grequests.map(unsent_request, size=1)
+    for r in responses:
+        assert loads(r.text)["status"] == "OK"
+        mem.append({'time': r.elapsed.total_seconds()})
+    return True
 
 
-def save():
-    with open("latency.csv", mode="a", newline="") as file:
+def save_idp():
+    with open("latency_idp.csv", mode="a", newline="") as file:
         fieldnames = ["Threshold", "Time"]
         writer = csv.DictWriter(file, fieldnames)
         # writer.writeheader()
         for i in range(len(mem)):
             writer.writerow({fieldnames[0]: threshold_idp, fieldnames[1]: mem[i]["time"] * 1000}, )
+
+
+def save_rp():
+    with open("latency_rp.csv", mode="a", newline="") as file:
+        fieldnames = ["Time"]
+        writer = csv.DictWriter(file, fieldnames)
+        # writer.writeheader()
+        for i in range(len(mem)):
+            writer.writerow({fieldnames[0]: mem[i]["time"] * 1000}, )
 
 
 """
@@ -186,7 +196,7 @@ if __name__ == "__main__":
             sigs_prime = client_request_id(request)
             time.sleep(5)
         print("Sig: RECEIVED")
-        save()
+        save_idp()
 
     # Aggregate the sigs
     sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
@@ -194,6 +204,11 @@ if __name__ == "__main__":
     assert client.verify_sig()
 
     proof = client.prove_id(b"Domain")
-    send_proof(proof)
+    del mem[:]
+    for _ in range(ITERATIONS):
+        send_proof(proof)
+        time.sleep(5)
     print("Proof: VALIDATED")
-    print(mem)
+    save_rp()
+
+    # print(mem)
