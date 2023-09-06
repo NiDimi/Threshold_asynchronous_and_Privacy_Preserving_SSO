@@ -146,16 +146,16 @@ def save_idp():
     with open("latency_idp.csv", mode="a", newline="") as file:
         fieldnames = ["Threshold", "Time"]
         writer = csv.DictWriter(file, fieldnames)
-        # writer.writeheader()
+        writer.writeheader()
         for i in range(len(mem)):
             writer.writerow({fieldnames[0]: threshold_idp, fieldnames[1]: mem[i]["time"] * 1000}, )
 
 
 def save_rp():
-    with open("latency_rp.csv", mode="a", newline="") as file:
+    with open("latency_rp.csv", mode="w", newline="") as file:
         fieldnames = ["Time"]
         writer = csv.DictWriter(file, fieldnames)
-        # writer.writeheader()
+        writer.writeheader()
         for i in range(len(mem)):
             writer.writerow({fieldnames[0]: mem[i]["time"] * 1000}, )
 
