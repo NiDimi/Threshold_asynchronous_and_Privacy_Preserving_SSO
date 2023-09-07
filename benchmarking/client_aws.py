@@ -23,15 +23,15 @@ Code strongly inspired by https://github.com/asonnino/coconut-timing
 """
 
 # Static fields
-SERVER_ADDR = [
-    "ec2-13-41-165-172.eu-west-2.compute.amazonaws.com",
-    "ec2-18-168-72-172.eu-west-2.compute.amazonaws.com",
-    "ec2-18-134-76-159.eu-west-2.compute.amazonaws.com",
-    "ec2-18-169-119-204.eu-west-2.compute.amazonaws.com",
-]
 # SERVER_ADDR = [
-#     "127.0.0.1",
+#     "ec2-13-41-165-172.eu-west-2.compute.amazonaws.com",
+#     "ec2-18-168-72-172.eu-west-2.compute.amazonaws.com",
+#     "ec2-18-134-76-159.eu-west-2.compute.amazonaws.com",
+#     "ec2-18-169-119-204.eu-west-2.compute.amazonaws.com",
 # ]
+SERVER_ADDR = [
+    "127.0.0.1",
+]
 
 ROUTE_SERVER_INFO = "/"
 ROUTE_IDP_SET = "/idp/set"
@@ -192,23 +192,25 @@ if __name__ == "__main__":
         client = Client(attributes, aggr_vk)
         openers = [Opener() for _ in range(total_opener)]
         request = client.request_id(threshold_opener, openers)
-        for _ in range(ITERATIONS):
-            sigs_prime = client_request_id(request)
-            time.sleep(5)
+        # for _ in range(ITERATIONS):
+        #     sigs_prime = client_request_id(request)
+        #     time.sleep(5)
         print("Sig: RECEIVED")
-        save_idp()
+        # save_idp()
+
+        sigs_prime = client_request_id(request)
 
     # Aggregate the sigs
-    # sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
-    # client.agg_cred(sigs)
-    # assert client.verify_sig()
-    #
-    # proof = client.prove_id(b"Domain")
-    # del mem[:]
-    # for _ in range(ITERATIONS):
-    #     send_proof(proof)
-    #     time.sleep(5)
-    # print("Proof: VALIDATED")
-    # save_rp()
+    sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
+    client.agg_cred(sigs)
+    assert client.verify_sig()
+
+    proof = client.prove_id(b"Domain")
+    del mem[:]
+    for _ in range(ITERATIONS):
+        send_proof(proof)
+        # time.sleep(5)
+    print("Proof: VALIDATED")
+    save_rp()
 
     # print(mem)
