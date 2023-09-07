@@ -5,13 +5,10 @@ import time
 from typing import List, Tuple
 import httpx
 
-from binascii import hexlify
 from json import loads, dumps
 
 import grequests
 import requests
-from engineio.async_drivers import aiohttp
-from petlib.bn import Bn
 
 sys.path.append("../src")
 import helper
@@ -38,8 +35,6 @@ ROUTE_IDP_SET = "/idp/set"
 ROUTE_IDP_PROVIDEID = "/idp/provideid"
 ROUT_RP_VERIFYID = "/rp/verifyid"
 
-# timings
-mem = []
 
 """
 ------------------------------------ Functions ---------------------------------------------------------
@@ -229,7 +224,6 @@ if __name__ == "__main__":
     aggr_vk = helper.agg_key(vk)
     set_idp_keys(idps, aggr_vk)  # Send to each IdP server the key generated when emulating the ss
     print("Keys set: OKAY")
-    del mem[:]
     print("Starting with IdPs:", threshold_idp)
 
     # Sending id request to the IdP
@@ -247,6 +241,5 @@ if __name__ == "__main__":
     # assert client.verify_sig()
     #
     # proof = client.prove_id(b"Domain")
-    # del mem[:]
     # measure_throughput_proofs_incremental(proof)
     # print("Proof: VALIDATED")
