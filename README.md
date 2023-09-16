@@ -8,4 +8,68 @@ The delicate balance between authentication and privacy preservation remains a s
 The code is built on top of [petlib](https://github.com/gdanezis/petlib) and [bplib](https://github.com/moonkace24/Corrected_bplib)
 
 
+# A Normal Run Through the Code
 
+## Setup parameters 
+
+```python
+threshold_idp = 2
+total_idp = 5
+threshold_opener = 2
+total_opener = 3
+attributes: List[Tuple[bytes, bool]] = [
+    (b"hidden1", True),
+    (b"hidden2", True),
+    (b"public1", False),
+    (b"hidden3", True)]
+BpGroupHelper.setup(len(attributes))
+attributes = helper.sort_attributes(attributes)
+
+```
+
+## Setup the entities of the protocol
+```python
+idps = setup_idps(threshold_idp, total_idp)
+openers = [Opener() for _ in range(total_opener)]
+rp = RP(b"Domain")
+# We need to create the aggregated public key in order to create the client
+vk = [idp.vk for idp in idps]
+# Remove one of the key for testing, we need just the threshold not all
+vk[0] = None
+aggr_vk = helper.agg_key(vk)
+client = Client(attributes, aggr_vk)
+```
+
+## Generate a valid credential
+```python
+# Communication with Client - IdP
+request = client.request_id(threshold_opener, openers)
+sigs_prime = [idp.provide_id(request, aggr_vk) for idp in idps]
+sigs = [client.unbind_sig(sig_prime) for sig_prime in sigs_prime]
+# Hide some sigs so we can test the threshold setting
+sigs[1] = sigs[4] = None
+# Creaate the aggregated signature which would be stored in the client
+client.agg_cred(sigs)
+```
+
+## Prove credential to RP
+```python
+proof = client.prove_id(rp.domain)
+assert rp.verify_id(proof, aggr_vk)
+```
+
+## De-anonymise User
+```python
+assert deanonymize(openers, proof, aggr_vk) == request.user_id
+
+# If the user tries to prove the credentials now it should fail
+assert not rp.verify_id(proof, aggr_vk)
+```
+
+
+# To Run The Tests
+
+```
+$ cd testing
+$ pytest -v
+```

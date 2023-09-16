@@ -3,7 +3,6 @@ from typing import List, Tuple
 import pytest
 from pytest import raises
 
-
 sys.path.append("../src")
 
 import helper
@@ -20,16 +19,16 @@ def test_idp_client_normal():
     total_idp = 5
     threshold_opener = 2
     total_opener = 3
-    BpGroupHelper.setup(5)
-    # Generate the entities in the protocol
-    idps = setup_idps(threshold_idp, total_idp)
-    openers = [Opener() for _ in range(total_opener)]
-
     attributes: List[Tuple[bytes, bool]] = [
         (b"hidden1", True),
         (b"hidden2", True),
         (b"public1", False),
         (b"hidden3", True)]
+    BpGroupHelper.setup(len(attributes))
+    # Generate the entities in the protocol
+    idps = setup_idps(threshold_idp, total_idp)
+    openers = [Opener() for _ in range(total_opener)]
+
     attributes = helper.sort_attributes(attributes)
     vk = [idp.vk for idp in idps]
     # Remove one of the key for testing, we need just the threshold not all
@@ -52,8 +51,8 @@ def test_idp_client_normal():
 
     # Ban user
     assert deanonymize(openers, proof, aggr_vk) == request.user_id
+    # Remove opener to test the threshold setting
+    openers.pop()
 
     # Check again
     assert not rp.verify_id(proof, aggr_vk)
-
-
