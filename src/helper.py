@@ -176,7 +176,8 @@ def sort_attributes(attributes):
 
 
 """
-The following two functions are used to pack and unpack data in order to communicate over AWS
+The following two functions are used to pack and unpack data in order to communicate over AWS, used for benchmarking 
+tests
 """
 
 

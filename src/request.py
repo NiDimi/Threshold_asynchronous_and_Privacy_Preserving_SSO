@@ -26,11 +26,18 @@ class Request:
 
     def to_json(self):
         """
-        Just packs the whole class
+        Convert the instance variables to a dictionary representation
+
         :return: The packed class
         """
         return pack(self.__dict__)
 
     @classmethod
     def from_json(cls, data):
+        """
+        Create an instance of CredProof from a dictionary.
+
+        :param data: Dictionary containing class attributes.
+        :return: CredProof instance.
+        """
         return cls(**unpack(data))

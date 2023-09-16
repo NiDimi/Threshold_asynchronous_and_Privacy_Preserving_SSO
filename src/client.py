@@ -22,6 +22,13 @@ class Client:
         self.__id = BpGroupHelper.o.random()
 
     def request_id(self, to, openers):
+        """
+        The client constructs a request to send to the IdP for credentials
+
+        :param to: The threshold number of openers
+        :param openers: All the openers entities
+        :return: A request for credentials
+        """
         self.__hashed_attributes = helper.hash_attributes(self.__attributes)
         G, o, g1 = BpGroupHelper.G, BpGroupHelper.o, BpGroupHelper.g1
         Cm, r = self.__create_commitment()
@@ -208,6 +215,12 @@ class Client:
         return not h.isinf() and e(h, verification_result) == e(s, g2)
 
     def prove_id(self, rp_domain):
+        """
+        A credential proof that the user will send to the RP for authentication
+
+        :param rp_domain: The domain of the RP to send the proof
+        :return: The credential proof
+        """
         domain_hash = BpGroupHelper.G.hashG1(rp_domain)
         user_id = domain_hash * self.__secret
         # Randomise the sig
@@ -299,5 +312,10 @@ class Client:
         return c, ra, rr, rs
 
     def set_attributes(self, attributes):
+        """
+        Just a helper function that allows to change the attributes of the user. Basically only used for testing
+
+        :param attributes: The new attributes
+        """
         self.__attributes = attributes
         self.__hashed_attributes = helper.hash_attributes(attributes)

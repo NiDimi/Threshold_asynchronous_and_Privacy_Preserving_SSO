@@ -124,7 +124,7 @@ class IdP:
         self.secret_share = final_s_share
 
     """The keys of the idp will have the format sk = (x, y_1,...,y_q, y_q+1) and 
-    vk = (g2, g2^x, g2^y_0,...,g2^y_q, g2^y_q+1) so we need to generate q+1 shares and save it each time"""
+    vk = (g2, g2^x, g2^y_0,...,g2^y_q, g2^y_q+1) so we need to generate q+2 (1 x, q+1 y) shares and save it each time"""
 
     def save_sk_x(self):
         """
@@ -148,6 +148,13 @@ class IdP:
     """--------------------------CODE FOR THE PROTOCOL------------------------"""
 
     def provide_id(self, request, vk):
+        """
+        Provide a credential to the client
+
+        :param request: The request of the user containing the necessary elements
+        :param vk: The verification key
+        :return: The credential if everything went correctly and 0 otherwise
+        """
         G = BpGroupHelper.G
         h = G.hashG1(request.Cm.export())  # generate the common base with the user to add the public attributes
         if not self.__verify_zkp(request, h):

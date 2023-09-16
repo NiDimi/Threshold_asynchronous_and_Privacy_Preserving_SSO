@@ -18,9 +18,9 @@ class RP:
         """
         Chck e(h, k_priv * k_pub) = e(s * vu, g2)
 
-        :param proof:
-        :param aggr_vk:
-        :return:
+        :param proof: The proof of the user containing the necessary elements
+        :param aggr_vk: The aggregated vk from the IdP's
+        :return:True if all checks pass, false otherwise
         """
         # Check the ZKP
         if not self.__verify_zkp(proof, aggr_vk):
