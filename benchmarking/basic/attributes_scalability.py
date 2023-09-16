@@ -4,14 +4,11 @@ from typing import List, Tuple
 
 from timing_benchmark import timing_test, setup
 
-sys.path.append("../src")
+sys.path.append("../../src")
 
 import helper
 from helper import BpGroupHelper
 from client import Client
-from idp import IdP, setup_idps
-from rp import RP
-from opener import Opener, check_sig, deanonymize, ban_users, ledger
 
 TIME_UNIT = 1000  # For ms
 ATTRIBUTES: List[Tuple[bytes, bool]] = [(b"private", True)]  # We always have to have one private
@@ -38,7 +35,7 @@ def run_timing_test(writer, type, idps, client, rp, openers, aggr_vk, to):
 
 
 def attribute_scalling_test(idps, client, rp, openers, aggr_vk, to):
-    with open("attributes_scalability.csv", mode="w", newline="") as file:
+    with open("../data/attributes_scalability.csv", mode="w", newline="") as file:
         fieldnames = ["type", "num_attributes", "time"]
         writer = csv.DictWriter(file, fieldnames)
         writer.writeheader()

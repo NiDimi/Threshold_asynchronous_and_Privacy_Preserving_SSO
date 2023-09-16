@@ -3,7 +3,8 @@ import csv
 import sys
 from typing import List, Tuple
 
-sys.path.append("../src")
+
+sys.path.append("../../src")
 
 import helper
 from helper import BpGroupHelper
@@ -19,12 +20,11 @@ ATTRIBUTES: List[Tuple[bytes, bool]] = [
     (b"hidden3", True),
     (b"public1", False),
 ]
-ITERATIONS = 100
+ITERATIONS = 10
 RUNS = 10
 
 
 def timing_test(idps, client, rp, openers, aggr_vk, to):
-    # time.sleep(2.5)
     # Request ID
     start_time = time.perf_counter()
     for i in range(RUNS):
@@ -56,6 +56,7 @@ def timing_test(idps, client, rp, openers, aggr_vk, to):
         proof = client.prove_id(rp.domain)
     end_time = time.perf_counter() 
     prove_id_time = (end_time - start_time) * TIME_UNIT / RUNS
+
     # Verify ID
     start_time = time.perf_counter()
     for i in range(RUNS):
@@ -91,14 +92,14 @@ def setup(q, ti, ni, to, no):
 
 def start_test(q, ti, ni, to, no):
     idps, client, rp, openers, aggr_vk = setup(q, ti, ni, to, no)
-    # just add 10 banned random users and 10 existing users in the ledger
+    # # just add 10 banned random users and 10 existing users in the ledger
     o, g2 = BpGroupHelper.o, BpGroupHelper.g2
-    for i in range(10):
+    for _ in range(10):
         r = o.random()
         # ban_users[r] = r * g2
         ledger[r] = {1: (r * g2, r * g2, (r * g2)), 2: (r * g2, r * g2, (r * g2))}
     # Open file
-    with open("timing_benchmark.csv", mode="w", newline="") as file:
+    with open("../data/timing_benchmark.csv", mode="w", newline="") as file:
         fieldnames = ['request_id', 'provide_id', 'unblind', 'aggr_sig', 'prove_id', 'verify_id', 'deanonymize']
         writer = csv.DictWriter(file, fieldnames)
         writer.writeheader()
