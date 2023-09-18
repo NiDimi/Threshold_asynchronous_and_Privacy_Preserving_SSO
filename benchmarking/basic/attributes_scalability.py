@@ -13,7 +13,7 @@ from client import Client
 TIME_UNIT = 1000  # For ms
 ATTRIBUTES: List[Tuple[bytes, bool]] = [(b"private", True)]  # We always have to have one private
 
-ITERATIONS = 100
+ITERATIONS = 10
 MAX_ATTRIBUTES = 19
 
 

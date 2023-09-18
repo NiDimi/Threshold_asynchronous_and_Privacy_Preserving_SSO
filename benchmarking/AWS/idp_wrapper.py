@@ -1,6 +1,6 @@
 import sys
 
-sys.path.append("../src")
+sys.path.append("../../src")
 from idp import IdP
 
 
@@ -8,7 +8,7 @@ class IdPWrapper:
     """
     Just a wrapper on IdP's since we only care about creating them not doing the whole
     secret sharing protocol. So we dont modify the IdP and just create this class to pass the keys
-
+    The parameters are just used for the key sharing protocol so any arbitrary number is fine.
 
     """
 
